@@ -1,0 +1,18 @@
+# Database config
+includes/db.php
+
+# Debug and Temp Files
+*.log
+*.txt
+debug_*.php
+fix_*.php
+check_*.php
+db.sql
+debug_json.txt
+db_dump.txt
+
+# OS/IDE Files
+.DS_Store
+.vscode/
+.idea/
+Thumbs.db
