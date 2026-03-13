@@ -50,24 +50,44 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_to_playlist']) && 
     exit;
 }
 
-include 'includes/header.php';
-
 if (!$video_id) {
     header("Location: index.php");
     exit;
 }
+
+// Yorum Silme Kontrolü
+if (isset($_GET['delete_comment']) && $user_id) {
+    $comment_id = (int)$_GET['delete_comment'];
+    $stmt = $pdo->prepare("DELETE FROM comments WHERE id = ? AND user_id = ?");
+    $stmt->execute([$comment_id, $user_id]);
+    header("Location: video.php?id=$video_id#comments");
+    exit;
+}
+
+include 'includes/header.php';
 
 // Sayfa Verilerini Çek
 $stmt = $pdo->prepare("SELECT * FROM videos WHERE id = ?");
 $stmt->execute([$video_id]);
 $video = $stmt->fetch();
 
+if (!$video) {
+    header("Location: index.php");
+    exit;
+}
+
+// PREMIUM KONTROLÜ
+$has_access = true;
+if (isset($video['is_premium']) && $video['is_premium'] == 1) {
+    if (!$vip_premium_access) {
+        $has_access = false;
+    }
+}
+
 // İzlenme sayısını artır
-if ($video) {
+if ($has_access) {
     $pdo->prepare("UPDATE videos SET views = views + 1 WHERE id = ?")->execute([$video_id]);
-    // Güncel veriyi tekrar çek ki ekranda hemen yansısın
-    $stmt->execute([$video_id]);
-    $video = $stmt->fetch();
+    $video['views']++;
 }
 
 // Like/Dislike Sayıları
@@ -104,14 +124,7 @@ if ($user_id) {
 
 // Yorum POST ajax_comment.php üzerinden yapılıyor, buradan sildik.
 
-// Yorum Silme Kontrolü (Aynı logic devam ediyor...)
-if (isset($_GET['delete_comment']) && $user_id) {
-    $comment_id = (int)$_GET['delete_comment'];
-    $stmt = $pdo->prepare("DELETE FROM comments WHERE id = ? AND user_id = ?");
-    $stmt->execute([$comment_id, $user_id]);
-    header("Location: video.php?id=$video_id#comments");
-    exit;
-}
+// Yorum Silme Kontrolü (Yukarı taşındı)
 
 // Tüm Yorumları Çek ve Hiyerarşik Yap (Hata düzeltilmiş versiyon)
 $stmt = $pdo->prepare("SELECT c.*, u.username FROM comments c JOIN users u ON c.user_id = u.id WHERE c.video_id = ? ORDER BY c.created_at DESC");
@@ -138,55 +151,127 @@ $lang_texts = [
         'must_login' => 'Giriş yapmalısınız.', 'views' => 'izlenme', 'recommended' => 'Sıradaki Videolar', 'reply' => 'Yanıtla',
         'cancel_reply' => 'İptal', 'delete_confirm_title' => 'Yorumu Sil', 'delete_confirm_msg' => 'Silmek istediğinize emin misiniz?',
         'share_title' => 'Videoyu Paylaş', 'playlist_title' => 'Listeye Ekle', 'create_playlist' => 'Yeni Liste Oluştur',
-        'copied' => 'Link Kopyalandı!'
+        'copied' => 'Link Kopyalandı!',
+        'report_title' => 'Bu Videoyu Rapor Et',
+        'report_btn' => 'Rapor Et',
+        'report_reason' => 'Rapor Nedeni',
+        'report_placeholder' => 'Eklemek istediğiniz detaylar (isteğe bağlı)...',
+        'report_success' => 'Bildiriminiz alındı, teşekkür ederiz.'
     ],
     'en' => [
         'comments' => 'Comments', 'no_comments' => 'No comments yet.', 'write_comment' => 'Add a comment...', 'send' => 'Post',
         'must_login' => 'Log in.', 'views' => 'views', 'recommended' => 'Up Next', 'reply' => 'Reply',
         'cancel_reply' => 'Cancel', 'delete_confirm_title' => 'Delete Comment', 'delete_confirm_msg' => 'Are you sure?',
         'share_title' => 'Share Video', 'playlist_title' => 'Add to Playlist', 'create_playlist' => 'Create New Playlist',
-        'copied' => 'Link Copied!'
+        'copied' => 'Link Copied!',
+        'report_title' => 'Report This Video',
+        'report_btn' => 'Report',
+        'report_reason' => 'Report Reason',
+        'report_placeholder' => 'Additional details (optional)...',
+        'report_success' => 'Report submitted, thank you.'
     ]
 ];
 $vt = $lang_texts[$lang];
+
+// Fetch Report Types
+$report_types = $pdo->query("SELECT * FROM report_types ORDER BY id ASC")->fetchAll();
 ?>
 
 <div class="video-page-wrapper">
     <div class="container">
         <div class="video-layout">
             <div class="video-primary">
-                <div class="player-container animate-fade">
-                    <?php if ($video['video_type'] == 'embed'): ?>
-                        <?php 
-                        $embed_url = $video['video_url'];
-                        $yt_id = '';
-                        if (preg_match('/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/', $embed_url, $matches)) {
-                            $yt_id = $matches[1];
-                        }
-                        
-                        if ($yt_id): ?>
-                            <div id="player" data-plyr-provider="youtube" data-plyr-embed-id="<?php echo $yt_id; ?>"></div>
-                        <?php else: ?>
-                            <div id="player" class="plyr__video-embed">
-                                <iframe src="<?php echo $embed_url; ?>" allowfullscreen allowtransparency allow="autoplay"></iframe>
+                <div class="player-container animate-fade" style="position: relative; min-height: 400px; background: #000; border-radius: 20px; overflow: hidden;">
+                    
+                    <?php if (!$has_access): ?>
+                        <div class="premium-lock-screen" style="position: absolute; top:0; left:0; width:100%; height:100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: linear-gradient(135deg, #1a1a1a 0%, #000 100%); z-index: 1000; text-align: center; padding: 2rem;">
+                            <div class="lock-icon" style="font-size: 5rem; color: #FFD700; margin-bottom: 1.5rem; filter: drop-shadow(0 0 20px rgba(255,215,0,0.3)); animation: breath 2s infinite;">
+                                <i class="fas fa-lock"></i>
                             </div>
-                        <?php endif; ?>
+                            <h2 style="font-size: 2rem; font-weight: 900; margin-bottom: 1rem; color: #fff;">
+                                <?php echo ($lang == 'tr' ? 'Bu Video Premium Üyelere Özeldir' : 'This Video is Exclusive to Premium Members'); ?>
+                            </h2>
+                            <p style="opacity: 0.6; margin-bottom: 2rem; max-width: 400px;">
+                                <?php echo ($lang == 'tr' ? 'Bu içeriği izlemek için VIP paketlerimizden birini satın almalısınız.' : 'To watch this content, you must purchase one of our VIP packages.'); ?>
+                            </p>
+                            <a href="premium.php" class="btn btn-primary" style="background: linear-gradient(135deg, #FFD700, #FFA500); color: #000; border: none; font-weight: 900; padding: 1.2rem 3rem; border-radius: 50px; text-decoration: none; transform: scale(1.1); transition: 0.3s; box-shadow: 0 10px 30px rgba(255,215,0,0.2);">
+                                <i class="fas fa-gem"></i> <?php echo ($lang == 'tr' ? 'VIP OL VE İZLE' : 'BECOME VIP & WATCH'); ?>
+                            </a>
+                        </div>
+                        <style>@keyframes breath { 0%, 100% { transform: scale(1); opacity: 0.8; } 50% { transform: scale(1.1); opacity: 1; } }</style>
                     <?php else: ?>
-                        <?php 
-                        $v_url = $video['video_url'];
-                        if (strpos($v_url, 'http') === false) {
-                            $v_url = "stream.php?file=" . urlencode(ltrim($v_url, '/'));
-                        }
-                        
-                        $video_thumb = $video['thumbnail'];
-                        if ($video_thumb && strpos($video_thumb, 'http') === false) {
-                            $video_thumb = ltrim($video_thumb, '/');
-                        }
-                        ?>
-                        <video id="player" playsinline controls data-poster="<?php echo $video_thumb ?: ''; ?>" preload="auto">
-                            <source src="<?php echo $v_url; ?>" type="video/mp4">
-                        </video>
-                    <?php endif; ?>
+
+                        <!-- Pre-roll Ad Management -->
+                        <?php if (isset($ads['pre_roll'])): ?>
+                            <div id="ad-container" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 100; background: #000; display: flex; align-items: center; justify-content: center;">
+                                <?php if ($ads['pre_roll']['ad_type'] == 'video'): ?>
+                                    <video id="ad-player" playsinline style="width: 100%; height: 100%; object-fit: contain;">
+                                        <source src="<?php echo $ads['pre_roll']['content']; ?>" type="video/mp4">
+                                    </video>
+                                    <div id="ad-timer" style="position: absolute; bottom: 80px; left: 20px; background: rgba(0,0,0,0.6); padding: 5px 15px; border-radius: 5px; font-weight: bold; font-size: 0.8rem; z-index: 101;">
+                                        <?php echo ($lang == 'tr' ? 'Reklam bittiğinde video başlayacak...' : 'Video will start when ad ends...'); ?>
+                                    </div>
+                                <?php else: ?>
+                                    <div id="ad-code-wrap" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
+                                        <?php echo $ads['pre_roll']['content']; ?>
+                                        <button onclick="skipAd()" style="position: absolute; bottom: 80px; right: 20px; background: var(--primary-red); color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; z-index: 101;">
+                                            <?php echo ($lang == 'tr' ? 'Reklamı Kapat' : 'Close Ad'); ?>
+                                        </button>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                            <script>
+                                function skipAd() {
+                                    document.getElementById('ad-container').style.display = 'none';
+                                    if(typeof player !== 'undefined') player.play();
+                                }
+                                document.addEventListener('DOMContentLoaded', () => {
+                                    const adVid = document.getElementById('ad-player');
+                                    if (adVid) {
+                                        adVid.play().catch(e => {
+                                            console.log("Auto-play blocked, showing skip button");
+                                            const timer = document.getElementById('ad-timer');
+                                            timer.innerHTML = '<button onclick="skipAd()" style="background:var(--primary-red); border:none; color:white; padding:5px 15px; border-radius:5px; cursor:pointer;">Başlat/Atla</button>';
+                                        });
+                                        adVid.onended = skipAd;
+                                    }
+                                });
+                            </script>
+                        <?php endif; ?>
+
+                        <?php if ($video['video_type'] == 'embed'): ?>
+                            <?php 
+                            $embed_url = $video['video_url'];
+                            $yt_id = '';
+                            if (preg_match('/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/', $embed_url, $matches)) {
+                                $yt_id = $matches[1];
+                            }
+                            
+                            if ($yt_id): ?>
+                                <div id="player" data-plyr-provider="youtube" data-plyr-embed-id="<?php echo $yt_id; ?>"></div>
+                            <?php else: ?>
+                                <div id="player" class="plyr__video-embed">
+                                    <iframe src="<?php echo $embed_url; ?>" allowfullscreen allowtransparency allow="autoplay"></iframe>
+                                </div>
+                            <?php endif; ?>
+                        <?php else: ?>
+                            <?php 
+                            $v_url = $video['video_url'];
+                            if (strpos($v_url, 'http') === false) {
+                                $v_url = "stream.php?file=" . urlencode(ltrim($v_url, '/'));
+                            }
+                            
+                            $video_thumb = $video['thumbnail'];
+                            if ($video_thumb && strpos($video_thumb, 'http') === false) {
+                                $video_thumb = ltrim($video_thumb, '/');
+                            }
+                            ?>
+                            <video id="player" playsinline controls data-poster="<?php echo $video_thumb ?: ''; ?>" preload="auto">
+                                <source src="<?php echo $v_url; ?>" type="video/mp4">
+                            </video>
+                        <?php endif; ?>
+
+                    <?php endif; // has_access end ?>
                 </div>
 
                 <div class="video-info-box">
@@ -211,9 +296,23 @@ $vt = $lang_texts[$lang];
                             </button>
                             <button class="action-btn" onclick="openShareModal()"><i class="fas fa-share"></i></button>
                             <button class="action-btn" onclick="openPlaylistModal()"><i class="fas fa-plus"></i></button>
+                            <button class="action-btn" onclick="openReportModal()" title="<?php echo $vt['report_btn']; ?>"><i class="fas fa-flag"></i></button>
                         </div>
                     </div>
                 </div>
+
+                <!-- Video Bottom Ad Slot -->
+                <?php if (isset($ads['video_bottom'])): ?>
+                    <div class="ad-banner-video-bottom" style="margin: 2rem 0; text-align: center; border-radius: 15px; overflow: hidden; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05);">
+                        <?php if ($ads['video_bottom']['ad_type'] == 'code'): ?>
+                            <?php echo $ads['video_bottom']['content']; ?>
+                        <?php else: ?>
+                            <a href="<?php echo htmlspecialchars($ads['video_bottom']['link_url']); ?>" target="_blank">
+                                <img src="<?php echo $ads['video_bottom']['content']; ?>" alt="Ad" style="max-width: 100%; border-radius: 15px;">
+                            </a>
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
 
                 <!-- ... Diğer içerikler (Aynı devam ediyor) ... -->
 
@@ -235,9 +334,8 @@ $vt = $lang_texts[$lang];
                         <h3 style="font-size: 1.4rem; font-weight: 800; margin-bottom: 1.5rem;"><?php echo $all_comments_count; ?> <?php echo $vt['comments']; ?></h3>
                     </div>
 
-                    <?php if(isset($_SESSION['user_id'])): ?>
                     <div class="add-comment-box" id="main-comment-form">
-                        <div class="user-avatar-small"><?php echo strtoupper(substr($_SESSION['username'], 0, 1)); ?></div>
+                        <div class="user-avatar-small"><?php echo isset($_SESSION['username']) ? strtoupper(substr($_SESSION['username'], 0, 1)) : '<i class="fas fa-user"></i>'; ?></div>
                         <form method="POST" class="comment-form">
                             <input type="text" name="comment_text" placeholder="<?php echo $vt['write_comment']; ?>" required>
                             <div class="form-btns">
@@ -245,11 +343,6 @@ $vt = $lang_texts[$lang];
                             </div>
                         </form>
                     </div>
-                    <?php else: ?>
-                    <div class="login-prompt">
-                        <a href="auth.php"><?php echo $vt['must_login']; ?></a>
-                    </div>
-                    <?php endif; ?>
 
                     <div class="comments-list" id="comments-container">
                         <?php if(empty($comments_tree)): ?>
@@ -415,6 +508,41 @@ $vt = $lang_texts[$lang];
     </div>
 </div>
 
+<!-- Report Modal -->
+<div class="orax-dialog-overlay" id="report-modal-overlay">
+    <div class="orax-dialog" id="report-modal">
+        <div class="dialog-header">
+            <i class="fas fa-flag"></i>
+            <span><?php echo $vt['report_title']; ?></span>
+        </div>
+        <div class="dialog-body">
+            <div id="report-status-msg" style="display:none; margin-bottom: 1rem; padding: 10px; border-radius: 10px; text-align: center; font-weight: 700;"></div>
+            <form id="report-form">
+                <input type="hidden" name="video_id" value="<?php echo $video_id; ?>">
+                
+                <div class="input-group" style="margin-bottom: 1.5rem;">
+                    <label style="display:block; margin-bottom: 0.5rem; opacity:0.6; font-size: 0.8rem;"><?php echo $vt['report_reason']; ?></label>
+                    <select name="report_type_id" required style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); padding: 0.8rem; border-radius: 12px; color: white; outline: none;">
+                        <?php foreach($report_types as $rt): ?>
+                            <option value="<?php echo $rt['id']; ?>"><?php echo $lang == 'tr' ? $rt['name_tr'] : $rt['name_en']; ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div class="input-group">
+                    <label style="display:block; margin-bottom: 0.5rem; opacity:0.6; font-size: 0.8rem;"><?php echo ($lang == 'tr' ? 'Açıklama' : 'Description'); ?></label>
+                    <textarea name="description" rows="4" placeholder="<?php echo $vt['report_placeholder']; ?>" 
+                              style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); padding: 0.8rem; border-radius: 12px; color: white; outline: none;"></textarea>
+                </div>
+            </form>
+        </div>
+        <div class="dialog-footer">
+            <button class="btn-dialog btn-dialog-cancel" onclick="closeReportModal()"><?php echo $vt['cancel_reply']; ?></button>
+            <button class="btn-dialog btn-dialog-confirm" id="submit-report-btn" onclick="submitReport()"><?php echo $vt['report_btn']; ?></button>
+        </div>
+    </div>
+</div>
+
 <template id="reply-form-template">
     <div class="add-comment-box reply-box animate-fade" style="margin-top: 1rem;">
         <form method="POST" class="comment-form">
@@ -455,6 +583,54 @@ function closePlaylistModal() {
     setTimeout(() => document.getElementById('playlist-modal-overlay').style.display = 'none', 300);
 }
 
+function openReportModal() {
+    const overlay = document.getElementById('report-modal-overlay');
+    overlay.style.display = 'flex';
+    setTimeout(() => document.getElementById('report-modal').classList.add('active'), 10);
+}
+function closeReportModal() {
+    document.getElementById('report-modal').classList.remove('active');
+    setTimeout(() => document.getElementById('report-modal-overlay').style.display = 'none', 300);
+}
+
+function submitReport() {
+    const btn = document.getElementById('submit-report-btn');
+    const form = document.getElementById('report-form');
+    const msgBox = document.getElementById('report-status-msg');
+    
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    
+    const formData = new FormData(form);
+    
+    fetch('api/submit_report.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+        msgBox.style.display = 'block';
+        if(data.status === 'success') {
+            msgBox.style.background = 'rgba(76, 175, 80, 0.1)';
+            msgBox.style.color = '#4CAF50';
+            msgBox.innerText = "<?php echo $vt['report_success']; ?>";
+            setTimeout(() => {
+                closeReportModal();
+                msgBox.style.display = 'none';
+                form.reset();
+            }, 2000);
+        } else {
+            msgBox.style.background = 'rgba(211, 47, 47, 0.1)';
+            msgBox.style.color = 'var(--primary-red)';
+            msgBox.innerText = data.message || "Error";
+        }
+    })
+    .finally(() => {
+        btn.disabled = false;
+        btn.innerText = "<?php echo $vt['report_btn']; ?>";
+    });
+}
+
 function confirmDelete(id) {
     showConfirmDialog(
         "<?php echo $vt['delete_confirm_title']; ?>",
@@ -470,7 +646,11 @@ document.addEventListener('submit', function(e) {
         e.preventDefault();
         
         <?php if(!isset($_SESSION['user_id'])): ?>
-            window.location.href = 'auth.php';
+            showConfirmDialog(
+                "<?php echo ($lang == 'tr' ? 'Oturum Açın' : 'Please Login'); ?>",
+                "<?php echo ($lang == 'tr' ? 'Yorum yazmak için giriş yapmanız gerekmektedir. Giriş sayfasına gitmek ister misiniz?' : 'You need to login to post a comment. Would you like to go to the login page?'); ?>",
+                () => { window.location.href = 'auth.php'; }
+            );
             return;
         <?php endif; ?>
         

@@ -1,10 +1,13 @@
 <?php
-include 'includes/header.php';
-
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 if (!isset($_SESSION['user_id'])) {
     header("Location: auth.php");
     exit;
 }
+include 'includes/header.php';
+include_once 'includes/db.php';
 
 $user_id = $_SESSION['user_id'];
 
@@ -17,6 +20,33 @@ $user = $stmt->fetch(PDO::FETCH_ASSOC);
 $stmt = $pdo->prepare("SELECT * FROM playlists WHERE user_id = ?");
 $stmt->execute([$user_id]);
 $playlists = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Ödeme geçmişini çek
+$stmt = $pdo->prepare("SELECT pr.*, pm.name_tr as method_name_tr, pm.name_en as method_name_en, pm.image_path as method_image 
+                       FROM payment_requests pr 
+                       LEFT JOIN payment_methods pm ON pr.method_id = pm.id 
+                       WHERE pr.user_id = ? 
+                       ORDER BY pr.created_at DESC");
+$stmt->execute([$user_id]);
+$payment_history = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Okunmamış değişim sayısını bul (status pending değil ve is_seen 0)
+// Öncelikle exists kontrolü yapalım (veritabanı güncelliği için)
+try {
+    $pdo->query("SELECT is_seen FROM payment_requests LIMIT 1");
+} catch(Exception $e) {
+    $pdo->exec("ALTER TABLE payment_requests ADD COLUMN is_seen TINYINT(1) DEFAULT 0");
+}
+
+$stmt = $pdo->prepare("SELECT COUNT(*) as unread_count FROM payment_requests WHERE user_id = ? AND status != 'pending' AND is_seen = 0");
+$stmt->execute([$user_id]);
+$unread_status_count = $stmt->fetch()['unread_count'];
+
+// AJAX ile okundu olarak işaretleme
+if (isset($_GET['mark_seen'])) {
+    $pdo->prepare("UPDATE payment_requests SET is_seen = 1 WHERE user_id = ? AND status != 'pending'")->execute([$user_id]);
+    echo "ok"; exit;
+}
 ?>
 
 <div class="container animate-fade">
@@ -37,9 +67,21 @@ $playlists = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     <span><?php echo ($lang == 'tr' ? 'Bakiyeniz' : 'Balance'); ?></span>
                     <strong><?php echo number_format($user['balance'], 2); ?> AZN</strong>
                 </div>
-                <button class="add-balance-btn" title="<?php echo ($lang == 'tr' ? 'Bakiye Yükle' : 'Add Balance'); ?>" onclick="openBalanceDialog()">
-                    <i class="fas fa-plus"></i>
-                </button>
+                <div style="display: flex; gap: 5px; margin-left: auto;">
+                    <div style="position: relative;">
+                        <button class="add-balance-btn" title="<?php echo ($lang == 'tr' ? 'Geçmiş' : 'History'); ?>" onclick="toggleProfileView('history')" style="background: rgba(255,255,255,0.05); box-shadow: none;">
+                            <i class="fas fa-history" style="color: white !important;"></i>
+                        </button>
+                        <?php if ($unread_status_count > 0): ?>
+                            <span id="history-badge" style="position: absolute; top: -5px; right: -5px; background: #d32f2f; color: #fff; width: 22px; height: 22px; border-radius: 50%; font-size: 0.7rem; font-weight: 900; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 10px rgba(211,47,47,0.5); border: 2px solid #141414;">
+                                <?php echo $unread_status_count; ?>
+                            </span>
+                        <?php endif; ?>
+                    </div>
+                    <button class="add-balance-btn" title="<?php echo ($lang == 'tr' ? 'Bakiye Yükle' : 'Add Balance'); ?>" onclick="location.href='deposit.php'">
+                        <i class="fas fa-plus"></i>
+                    </button>
+                </div>
             </div>
             <div class="stat-item">
                 <i class="fas fa-list-ul"></i>
@@ -82,6 +124,74 @@ $playlists = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 <a href="logout.php" class="btn btn-primary" style="padding: 1rem 2.5rem; border-radius: 50px; font-weight: 800;">
                     <i class="fas fa-sign-out-alt"></i> <?php echo ($lang == 'tr' ? 'Güvenli Çıkış' : 'Logout'); ?>
                 </a>
+            </div>
+        </div>
+
+        <!-- Payment History View -->
+        <div id="profile-history-view" class="animate-fade" style="display: none;">
+            <div class="profile-section">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
+                    <h2 class="section-title" style="margin-bottom: 0;"><i class="fas fa-history"></i> <?php echo ($lang == 'tr' ? 'Ödeme Geçmişim' : 'My Payment History'); ?></h2>
+                    <div class="payment-filters" style="display: flex; gap: 5px; background: rgba(0,0,0,0.2); padding: 5px; border-radius: 12px;">
+                        <button onclick="filterPayments('all')" class="filter-btn active" id="f-all"><?php echo ($lang == 'tr' ? 'Hepsi' : 'All'); ?></button>
+                        <button onclick="filterPayments('pending')" class="filter-btn" id="f-pending"><?php echo ($lang == 'tr' ? 'Beklemede' : 'Pending'); ?></button>
+                        <button onclick="filterPayments('approved')" class="filter-btn" id="f-approved"><?php echo ($lang == 'tr' ? 'Onaylandı' : 'Approved'); ?></button>
+                        <button onclick="filterPayments('rejected')" class="filter-btn" id="f-rejected"><?php echo ($lang == 'tr' ? 'Reddedildi' : 'Rejected'); ?></button>
+                    </div>
+                    <button onclick="toggleProfileView('main')" class="btn-dialog-cancel" style="border: none; background: rgba(255,255,255,0.05); padding: 0.6rem 1.2rem; border-radius: 50px; color: white; cursor: pointer; font-weight: 600;">
+                        <i class="fas fa-arrow-left"></i> <?php echo ($lang == 'tr' ? 'Geri Dön' : 'Go Back'); ?>
+                    </button>
+                </div>
+
+                <div class="payment-history-list">
+                    <?php if (count($payment_history) > 0): ?>
+                        <?php foreach($payment_history as $pay): 
+                            $status_info = [
+                                'pending' => ['tr' => 'Beklemede', 'en' => 'Pending', 'color' => '#ffc107', 'bg' => 'rgba(255,193,7,0.1)'],
+                                'approved' => ['tr' => 'Onaylandı', 'en' => 'Approved', 'color' => '#4caf50', 'bg' => 'rgba(76,175,80,0.1)'],
+                                'rejected' => ['tr' => 'Reddedildi', 'en' => 'Rejected', 'color' => 'var(--primary-red)', 'bg' => 'rgba(211,47,47,0.1)']
+                            ][$pay['status']];
+                            $m_name = ($lang == 'tr' ? $pay['method_name_tr'] : ($pay['method_name_en'] ?? $pay['method_name_tr'])) ?? ($lang == 'tr' ? 'Bilinmeyen Yöntem' : 'Unknown Method');
+                        ?>
+                            <div class="payment-card" data-status="<?php echo $pay['status']; ?>">
+                                <div style="display: flex; justify-content: space-between; align-items: flex-start; width: 100%;">
+                                    <div class="pay-method-info">
+                                        <div class="pay-icon">
+                                            <?php if($pay['method_image']): ?>
+                                                <img src="<?php echo $pay['method_image']; ?>" style="width: 100%; height: 100%; border-radius: 8px; object-fit: cover;">
+                                            <?php else: ?>
+                                                <i class="fas fa-wallet"></i>
+                                            <?php endif; ?>
+                                        </div>
+                                        <div class="pay-details">
+                                            <h3><?php echo htmlspecialchars($m_name); ?></h3>
+                                            <p><?php echo date('d.m.Y H:i', strtotime($pay['created_at'])); ?></p>
+                                        </div>
+                                    </div>
+                                    <div class="pay-value">
+                                        <div style="font-weight: 900; font-size: 1.1rem; color: #fff; margin-bottom: 5px;"><?php echo number_format($pay['amount'], 2); ?> AZN</div>
+                                        <div class="status-chip" style="background: <?php echo $status_info['bg']; ?>; color: <?php echo $status_info['color']; ?>;">
+                                            <?php echo $status_info[$lang]; ?>
+                                        </div>
+                                    </div>
+                                </div>
+                                <?php if (!empty($pay['admin_note'])): ?>
+                                    <div style="margin-top: 15px; padding: 12px; background: rgba(255,255,255,0.03); border-radius: 12px; border-left: 3px solid <?php echo $status_info['color']; ?>; width: 100%;">
+                                        <label style="display:block; font-size: 0.65rem; opacity: 0.4; font-weight: 900; text-transform: uppercase; margin-bottom: 3px; letter-spacing: 0.5px;">
+                                            <?php echo ($lang == 'tr' ? 'Yönetici Notu' : 'Admin Note'); ?>
+                                        </label>
+                                        <div style="font-size: 0.85rem; opacity: 0.8; line-height: 1.4; font-weight: 600;"><?php echo htmlspecialchars($pay['admin_note']); ?></div>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <p style="opacity: 0.5; padding: 2rem; border: 1px dashed rgba(255,255,255,0.1); border-radius: 20px; text-align: center;">
+                            <?php echo ($lang == 'tr' ? 'Henüz bir ödeme işleminiz bulunmuyor.' : 'You don\'t have any payment transactions yet.'); ?>
+                        </p>
+                    <?php endif; ?>
+                </div>
+            </div>
             </div>
         </div>
 
@@ -232,6 +342,26 @@ $playlists = $stmt->fetchAll(PDO::FETCH_ASSOC);
     .playlist-info h3 { font-size: 1rem; margin-bottom: 2px; }
     .playlist-info p { font-size: 0.8rem; opacity: 0.4; }
     .arrow { opacity: 0.3; }
+
+    /* Payment History Styling */
+    .payment-history-list { display: flex; flex-direction: column; gap: 1rem; }
+    .payment-card { background: rgba(255,255,255,0.025); border: 1px solid rgba(255,255,255,0.05); padding: 1.2rem 1.5rem; border-radius: 20px; display: flex; align-items: center; justify-content: space-between; transition: 0.3s; }
+    .payment-card:hover { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.1); }
+    .pay-method-info { display: flex; align-items: center; gap: 1.2rem; }
+    .pay-icon { width: 45px; height: 45px; background: rgba(255,255,255,0.05); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.3); font-size: 1.2rem; flex-shrink: 0; }
+    .pay-details h3 { font-size: 1rem; font-weight: 800; margin-bottom: 2px; }
+    .pay-details p { font-size: 0.75rem; opacity: 0.4; font-weight: 600; }
+    .pay-value { text-align: right; }
+    .status-chip { padding: 4px 12px; border-radius: 8px; font-size: 0.7rem; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; display: inline-block; }
+    .payment-card { flex-direction: column; align-items: flex-start; }
+
+    .filter-btn { background: none; border: none; color: #fff; padding: 0.5rem 1rem; border-radius: 8px; font-size: 0.75rem; font-weight: 700; cursor: pointer; opacity: 0.4; transition: 0.3s; }
+    .filter-btn:hover { opacity: 0.7; }
+    .filter-btn.active { background: var(--primary-red); opacity: 1; }
+
+    body.light-mode .payment-card { background: rgba(0,0,0,0.02); border-color: rgba(0,0,0,0.05); }
+    body.light-mode .pay-details p { color: #333; opacity: 0.5; }
+    body.light-mode .pay-icon { background: rgba(0,0,0,0.05); color: #333; }
     
     @media (max-width: 768px) {
         .profile-stats { flex-direction: column; gap: 1rem; padding: 0 1rem; }
@@ -244,19 +374,33 @@ $playlists = $stmt->fetchAll(PDO::FETCH_ASSOC);
 function toggleProfileView(view) {
     const mainView = document.getElementById('profile-main-view');
     const settingsView = document.getElementById('profile-settings-view');
+    const historyView = document.getElementById('profile-history-view');
     const settingsBtn = document.getElementById('settings-trigger-btn');
 
+    // Reset all
+    mainView.style.display = 'none';
+    settingsView.style.display = 'none';
+    historyView.style.display = 'none';
+    settingsBtn.style.opacity = '1';
+    settingsBtn.style.pointerEvents = 'auto';
+
     if (view === 'settings') {
-        mainView.style.display = 'none';
         settingsView.style.display = 'block';
         settingsBtn.style.opacity = '0';
         settingsBtn.style.pointerEvents = 'none';
         updateThemeBtnText();
+    } else if (view === 'history') {
+        historyView.style.display = 'block';
+        settingsBtn.style.opacity = '0';
+        settingsBtn.style.pointerEvents = 'none';
+        
+        // Mark as seen when opening history
+        fetch('profile.php?mark_seen=1').then(() => {
+            const badge = document.getElementById('history-badge');
+            if (badge) badge.style.display = 'none';
+        });
     } else {
         mainView.style.display = 'block';
-        settingsView.style.display = 'none';
-        settingsBtn.style.opacity = '1';
-        settingsBtn.style.pointerEvents = 'auto';
     }
 }
 
@@ -279,6 +423,19 @@ function toggleThemeGlobal() {
         // updateThemeBtnText otomatik tetiklenmezse diye kısa gecikmeyle çağır
         setTimeout(updateThemeBtnText, 100);
     }
+}
+
+function filterPayments(status) {
+    document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+    document.getElementById('f-' + status).classList.add('active');
+    
+    document.querySelectorAll('.payment-card').forEach(card => {
+        if (status === 'all' || card.getAttribute('data-status') === status) {
+            card.style.display = 'flex';
+        } else {
+            card.style.display = 'none';
+        }
+    });
 }
 
 function openBalanceDialog() {

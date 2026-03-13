@@ -134,26 +134,31 @@ h3 {
 .user-pill {
     display: flex;
     align-items: center;
-    gap: 1rem;
-    background: rgba(255, 255, 255, 0.05);
-    padding: 0.5rem 1.2rem;
+    gap: 12px;
+    padding: 0.4rem 1.2rem;
+    background: rgba(255, 255, 255, 0.03);
     border-radius: 50px;
-    font-size: 0.9rem;
-    font-weight: 600;
     border: 1px solid rgba(255, 255, 255, 0.05);
+    text-decoration: none;
+    color: inherit;
+    transition: var(--transition);
+}
+
+.user-pill:hover {
+    background: rgba(255, 255, 255, 0.08);
 }
 
 .balance-pill {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 8px;
     background: rgba(0, 0, 0, 0.2);
     padding: 0.3rem 0.8rem;
     border-radius: 50px;
     font-size: 0.85rem;
     font-weight: 700;
-    margin-right: 0.5rem;
     border: 1px solid rgba(255, 255, 255, 0.05);
+    cursor: pointer;
 }
 
 .user-pill i {
@@ -479,6 +484,27 @@ body {
     padding: 0 5px;
 }
 
+/* Badge Styling */
+.badge {
+    display: inline-block;
+    padding: 0.4rem 0.8rem;
+    border-radius: 50px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: rgba(211, 47, 47, 0.15);
+    color: var(--accent-red);
+    border: 1px solid rgba(211, 47, 47, 0.2);
+    transition: var(--transition);
+}
+
+.badge:hover {
+    background: var(--primary-red);
+    color: white;
+    transform: translateY(-1px);
+}
+
 /* Video Card Premium Redesign */
 .video-card {
     background: linear-gradient(145deg, rgba(255, 255, 255, 0.03), rgba(0, 0, 0, 0.2));
@@ -607,9 +633,7 @@ body {
 }
 
 @media (max-width: 900px) {
-    .nav-center {
-        display: none;
-    }
+    /* Rules for max-width 900px */
 }
 
 @media (max-width: 768px) {
@@ -670,17 +694,8 @@ body {
         border: none;
     }
 
-    .user-pill .balance-pill,
-    .user-pill span {
-        display: none;
-    }
-
-    .user-pill i.fa-user-circle {
-        font-size: 1.8rem;
-        color: var(--primary-red);
-        opacity: 1;
-        display: block;
-        transition: 0.2s;
+    .desktop-only {
+        display: none !important;
     }
 
     .user-pill:active i.fa-user-circle {
@@ -688,7 +703,41 @@ body {
     }
 
     .nav-center {
-        display: none !important;
+        display: none;
+        /* Hide by default on mobile, shown with .active-mobile-search */
+    }
+
+    .top-nav.search-mode .nav-center {
+        display: flex !important;
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: #0f0f0f;
+        z-index: 1001;
+        padding: 0 1rem;
+        margin: 0;
+        max-width: none;
+        align-items: center;
+        animation: slideInDown 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .top-nav.search-mode .nav-left,
+    .top-nav.search-mode .nav-right {
+        visibility: hidden;
+    }
+
+    @keyframes slideInDown {
+        from {
+            transform: translateY(-100%);
+            opacity: 0;
+        }
+
+        to {
+            transform: translateY(0);
+            opacity: 1;
+        }
     }
 
     .sidebar {
@@ -1376,6 +1425,7 @@ body {
     overflow: hidden;
     display: -webkit-box;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
     -webkit-box-orient: vertical;
 }
 
@@ -1642,5 +1692,247 @@ body {
     .plyr.mobile-portrait .plyr__progress__container {
         flex: 1;
         /* Progress bar'ın tüm alanı kaplamasını sağlar */
+    }
+}
+
+/* Hover Preview Video */
+.preview-video {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    z-index: 5;
+    pointer-events: none;
+    background-color: #000;
+}
+
+.thumbnail-container:hover .preview-video,
+.video-card.playing-preview .preview-video {
+    opacity: 1;
+}
+
+.thumbnail-container {
+    position: relative;
+    overflow: hidden;
+}
+
+/* Expandable Search Bar for Mobile/Listing */
+.expandable-search-container {
+    display: none;
+    /* Hide on Desktop by default */
+    align-items: center;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 50px;
+    padding: 2px;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    max-width: 40px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+@media (max-width: 768px) {
+    .expandable-search-container {
+        display: flex;
+        /* Show only on Mobile */
+    }
+}
+
+.expandable-search-container.active {
+    max-width: 300px;
+    padding-left: 12px;
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--primary-red);
+    box-shadow: 0 0 25px rgba(211, 47, 47, 0.3);
+}
+
+.expandable-search-container input {
+    width: 0;
+    opacity: 0;
+    background: none;
+    border: none;
+    color: white;
+    outline: none;
+    font-size: 0.95rem;
+    padding: 0;
+    transition: all 0.3s;
+    height: 38px;
+}
+
+.expandable-search-container.active input {
+    width: 100%;
+    opacity: 1;
+    padding: 0 10px;
+}
+
+.expandable-search-container .search-btn {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: 0.3s;
+}
+
+.expandable-search-container .search-btn:hover {
+    color: var(--primary-red);
+}
+
+.expandable-search-container .search-suggestions {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    width: 100%;
+    background: #1a1a1a;
+    border-radius: 12px;
+    margin-top: 10px;
+    z-index: 1000;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+    display: none;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(20px);
+}
+
+.expandable-search-container .suggestion-item {
+    padding: 12px 15px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.7);
+    transition: 0.2s;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.expandable-search-container .suggestion-item:last-child {
+    border-bottom: none;
+}
+
+.expandable-search-container .suggestion-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: white;
+}
+
+/* Mobile Sidebar Balance Display - Refined & Minimal */
+.mobile-sidebar-balance {
+    display: none;
+    margin: 0.5rem 0 1rem 0;
+    /* Ana sayfa ile arasında boşluk */
+    padding: 0.8rem 1.5rem;
+    /* Menü öğeleriyle aynı hizada olması için padding */
+    align-items: center;
+    gap: 15px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    /* Altını çizerek ayır */
+    padding-bottom: 1.5rem;
+}
+
+@media (max-width: 768px) {
+    .mobile-sidebar-balance {
+        display: flex;
+    }
+}
+
+.mobile-sidebar-balance .balance-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.mobile-sidebar-balance .balance-label {
+    font-size: 0.65rem;
+    color: rgba(255, 255, 255, 0.3);
+    text-transform: uppercase;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+.mobile-sidebar-balance .balance-amount {
+    font-size: 1rem;
+    font-weight: 800;
+    color: var(--primary-red);
+    /* Daha belirgin ama kibar */
+}
+
+.mobile-sidebar-balance .add-balance-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.mobile-sidebar-balance .add-balance-btn:active {
+    background: var(--primary-red);
+    transform: scale(0.9);
+}
+
+/* Pull to Refresh Mobile */
+.ptr-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 80px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+    pointer-events: none;
+    transform: translateY(-100%);
+    transition: transform 0.2s cubic-bezier(0, 0, 0.3, 1), opacity 0.3s;
+    opacity: 0;
+}
+
+
+.ptr-element {
+    background: rgba(26, 26, 26, 0.85);
+    backdrop-filter: blur(15px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--primary-red);
+    width: 45px;
+    height: 45px;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    margin-top: 20px;
+}
+
+.ptr-element i {
+    font-size: 1.1rem;
+}
+
+.ptr-active {
+    opacity: 1;
+}
+
+.ptr-refreshing .ptr-element i {
+    animation: ptr-spin 1s linear infinite;
+}
+
+@keyframes ptr-spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
     }
 }

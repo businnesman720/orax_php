@@ -4,7 +4,7 @@ include '../includes/db.php';
 
 // Dil ayarı (Rule 5: default English)
 if (!isset($_SESSION['admin_lang'])) {
-    $_SESSION['admin_lang'] = 'en';
+    $_SESSION['admin_lang'] = 'tr';
 }
 if (isset($_GET['lang'])) {
     $_SESSION['admin_lang'] = $_GET['lang'] == 'tr' ? 'tr' : 'en';
@@ -34,7 +34,10 @@ $texts = [
         'users' => 'Users',
         'settings' => 'Site Settings',
         'logout' => 'Safe Logout',
-        'view_site' => 'Live View'
+        'view_site' => 'Live View',
+        'reports' => 'Reports',
+        'payment_requests' => 'Payment Requests',
+        'payment_methods' => 'Payment Methods'
     ],
     'tr' => [
         'title' => 'Kategori Yönetimi',
@@ -56,7 +59,10 @@ $texts = [
         'users' => 'Kullanıcılar',
         'settings' => 'Site Ayarları',
         'logout' => 'Güvenli Çıkış',
-        'view_site' => 'Siteyi Gör'
+        'view_site' => 'Siteyi Gör',
+        'reports' => 'Raporlar',
+        'payment_requests' => 'Bakiye Talepleri',
+        'payment_methods' => 'Ödeme Yöntemleri'
     ]
 ];
 $t = $texts[$lang];
@@ -149,7 +155,7 @@ while ($row = $stmt_settings->fetch(PDO::FETCH_ASSOC)) {
         }
 
         .lang-pills-admin { display: flex; gap: 0.5rem; background: rgba(0,0,0,0.3); padding: 0.3rem; border-radius: 50px; }
-        .lang-pills-admin a { text-decoration: none; color: white; padding: 0.4rem 1rem; border-radius: 50px; font-size: 0.75rem; font-weight: 700; opacity: 0.4; }
+        .lang-pills-admin a { text-decoration: none; color: white; padding: 0.4rem 1rem; border-radius: 50px; font-size: 0.75rem; font-weight: 700; opacity: 0.4; transition: 0.3s; }
         .lang-pills-admin a.active { background: var(--primary-red); opacity: 1; }
 
         .main-pane {
@@ -201,33 +207,7 @@ while ($row = $stmt_settings->fetch(PDO::FETCH_ASSOC)) {
 </head>
 <body>
 
-<aside class="sidebar">
-    <?php if(!empty($current_settings['logo']) && file_exists('../' . $current_settings['logo'])): ?>
-        <div style="text-align: center; margin-bottom: 4rem;">
-            <img src="../<?php echo $current_settings['logo']; ?>" alt="Logo" style="width: <?php echo !empty($current_settings['admin_logo_width']) ? htmlspecialchars($current_settings['admin_logo_width']) : '200px'; ?>; max-width: 100%; object-fit: contain; filter: drop-shadow(0 0 20px rgba(211, 47, 47, 0.3));">
-        </div>
-    <?php else: ?>
-        <div class="sidebar-logo">ORAX</div>
-    <?php endif; ?>
-    
-    <ul class="side-nav">
-        <li><a href="dashboard.php"><i class="fas fa-th-large"></i> <?php echo $t['dashboard']; ?></a></li>
-        <li><a href="videos.php"><i class="fas fa-video"></i> <?php echo $t['videos']; ?></a></li>
-        <li><a href="categories.php" class="active"><i class="fas fa-folder"></i> <?php echo $t['categories']; ?></a></li>
-        <li><a href="users.php"><i class="fas fa-user-friends"></i> <?php echo $t['users']; ?></a></li>
-        <li><a href="settings.php"><i class="fas fa-cog"></i> <?php echo $t['settings']; ?></a></li>
-    </ul>
-
-    <div style="margin-top: auto;">
-        <div class="lang-pills-admin" style="margin-bottom: 1.5rem;">
-            <a href="?lang=en" class="<?php echo $lang == 'en' ? 'active' : ''; ?>">EN</a>
-            <a href="?lang=tr" class="<?php echo $lang == 'tr' ? 'active' : ''; ?>">TR</a>
-        </div>
-        <a href="logout.php" style="text-decoration: none; display: flex; align-items: center; gap: 1.2rem; padding: 1.2rem 1.5rem; background: rgba(255,255,255,0.03); border-radius: 15px; color: #888; width: 100%; font-weight: 600; transition: 0.3s;" onmouseover="this.style.background='rgba(211,47,47,0.1)'; this.style.color='var(--primary-red)';" onmouseout="this.style.background='rgba(255,255,255,0.03)'; this.style.color='#888';">
-            <i class="fas fa-power-off"></i> <?php echo $t['logout']; ?>
-        </a>
-    </div>
-</aside>
+<?php include 'includes/sidebar.php'; ?>
 
 <main class="main-pane">
     <header class="header-bar">
@@ -334,3 +314,4 @@ while ($row = $stmt_settings->fetch(PDO::FETCH_ASSOC)) {
 
 </body>
 </html>
+

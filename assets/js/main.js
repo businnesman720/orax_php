@@ -71,4 +71,83 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+    // --- Video Hover Preview Logic ---
+    function initVideoPreviews() {
+        const containers = document.querySelectorAll('.thumbnail-container');
+
+        containers.forEach(container => {
+            if (container.dataset.previewInitialized) return;
+            container.dataset.previewInitialized = "true";
+
+            const video = container.querySelector('.preview-video');
+            if (!video) return;
+
+            const videoUrl = container.dataset.videoUrl;
+            const videoType = container.dataset.videoType;
+
+            // file veya url (vtt/mp4 direct link) tipindeki videoları önizleyebiliriz
+            if (videoType !== 'file' && videoType !== 'url') return;
+
+            let hoverTimer;
+            let longPressTimer;
+
+            const startPreview = () => {
+                if (!video.src || video.src === window.location.href) {
+                    // Video URL'si göreceli ise header'daki base path veya ../ durumuna göre düzenle
+                    const finalUrl = videoUrl.startsWith('http') ? videoUrl : (videoUrl.startsWith('uploads') ? videoUrl : videoUrl);
+                    video.src = finalUrl;
+                }
+                container.closest('.video-card').classList.add('playing-preview');
+                video.play().catch(e => console.log("Preview play blocked:", e));
+            };
+
+            const stopPreview = () => {
+                container.closest('.video-card').classList.remove('playing-preview');
+                video.pause();
+                video.currentTime = 0;
+            };
+
+            // Masaüstü: Mouse Hover
+            container.addEventListener('mouseenter', () => {
+                hoverTimer = setTimeout(startPreview, 150); // 150ms gecikme ile başlar
+            });
+
+            container.addEventListener('mouseleave', () => {
+                clearTimeout(hoverTimer);
+                stopPreview();
+            });
+
+            // Mobil: Uzun Basma (Long Press)
+            container.addEventListener('touchstart', (e) => {
+                // Tıklamayı engellememek için pasif geçiyoruz, sadece timer kuruyoruz
+                longPressTimer = setTimeout(() => {
+                    startPreview();
+                    // Uzun basma olunca titreşim (varsa) verebiliriz
+                    if (navigator.vibrate) navigator.vibrate(50);
+                }, 600);
+            }, { passive: true });
+
+            container.addEventListener('touchend', () => {
+                clearTimeout(longPressTimer);
+                stopPreview();
+            });
+
+            container.addEventListener('touchmove', () => {
+                clearTimeout(longPressTimer);
+            });
+        });
+    }
+
+    // İlk yüklemede çalıştır
+    initVideoPreviews();
+
+    // Sonsuz kaydırma (Infinite Scroll) ile yeni videolar gelince tekrar çalıştır
+    const gridObserver = new MutationObserver(() => {
+        initVideoPreviews();
+    });
+    const videoGrid = document.getElementById('video-grid-container');
+    if (videoGrid) {
+        gridObserver.observe(videoGrid, { childList: true });
+    }
 });

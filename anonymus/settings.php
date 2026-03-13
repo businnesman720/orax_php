@@ -3,7 +3,7 @@ include 'auth.php';
 include '../includes/db.php';
 
 if (!isset($_SESSION['admin_lang'])) {
-    $_SESSION['admin_lang'] = 'en';
+    $_SESSION['admin_lang'] = 'tr';
 }
 if (isset($_GET['lang'])) {
     $_SESSION['admin_lang'] = $_GET['lang'] == 'tr' ? 'tr' : 'en';
@@ -23,6 +23,9 @@ $texts = [
         'settings' => 'Site Settings',
         'logout' => 'Safe Logout',
         'view_site' => 'Live View',
+        'reports' => 'Reports',
+        'payment_requests' => 'Payment Requests',
+        'payment_methods' => 'Payment Methods',
         'tab_general' => 'General',
         'tab_seo' => 'SEO Settings',
         'tab_theme' => 'Brand & Theme',
@@ -40,7 +43,21 @@ $texts = [
         'google_analytics' => 'Google Analytics Tracking ID',
         'primary_color' => 'Primary Brand Color',
         'save' => 'Save Settings',
-        'saved' => 'Settings saved successfully.'
+        'saved' => 'Settings saved successfully.',
+        'tab_cdn' => 'CDN & Bunny.net',
+        'bunny_storage_name' => 'Storage Zone Name',
+        'bunny_api_key' => 'Storage API Key (Access Key)',
+        'bunny_pull_url' => 'Pull Zone URL (e.g. https://orax.b-cdn.net/)',
+        'bunny_region' => 'Storage Region (e.g. ny, sg, de - leave blank for default)',
+        'tab_banners' => 'Banners & Slider',
+        'banner_slider_speed' => 'Slide Speed (Seconds)',
+        'banner_slider_auto' => 'Auto-Slide Enabled',
+        'add_banner' => 'Add New Banner',
+        'banner_pc' => 'PC Banner (1920x500 approx)',
+        'banner_mobile' => 'Mobile Banner (800x400 approx)',
+        'banner_link' => 'Redirection Link (Optional)',
+        'banner_list' => 'Active Banners',
+        'no_banners' => 'No banners added yet.'
     ],
     'tr' => [
         'title' => 'Site Ayarları',
@@ -51,6 +68,9 @@ $texts = [
         'settings' => 'Site Ayarları',
         'logout' => 'Güvenli Çıkış',
         'view_site' => 'Siteyi Gör',
+        'reports' => 'Raporlar',
+        'payment_requests' => 'Bakiye Talepleri',
+        'payment_methods' => 'Ödeme Yöntemleri',
         'tab_general' => 'Genel',
         'tab_seo' => 'SEO Ayarları',
         'tab_theme' => 'Marka & Tema',
@@ -68,7 +88,21 @@ $texts = [
         'google_analytics' => 'Google Analytics ID (veya Head Kodu)',
         'primary_color' => 'Ana Marka Rengi',
         'save' => 'Ayarları Kaydet',
-        'saved' => 'Ayarlar başarıyla kaydedildi.'
+        'saved' => 'Ayarlar başarıyla kaydedildi.',
+        'tab_cdn' => 'CDN & Bunny.net',
+        'bunny_storage_name' => 'Storage Zone Adı',
+        'bunny_api_key' => 'Storage API Anahtarı (Access Key)',
+        'bunny_pull_url' => 'Pull Zone Linki (Örn: https://orax.b-cdn.net/)',
+        'bunny_region' => 'Storage Bölgesi (Örn: ny, sg, de - varsayılan için boş bırakın)',
+        'tab_banners' => 'Bannerlar & Slider',
+        'banner_slider_speed' => 'Kayma Hızı (Saniye)',
+        'banner_slider_auto' => 'Otomatik Kaydırma Aktif',
+        'add_banner' => 'Yeni Banner Ekle',
+        'banner_pc' => 'PC Banner (Örn: 1920x500)',
+        'banner_mobile' => 'Mobil Banner (Örn: 800x400)',
+        'banner_link' => 'Yönlendirme Linki (İsteğe Bağlı)',
+        'banner_list' => 'Aktif Bannerlar',
+        'no_banners' => 'Henüz banner eklenmemiş.'
     ]
 ];
 $t = $texts[$lang];
@@ -85,7 +119,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
         'custom_css' => trim($_POST['custom_css']),
         'primary_color' => trim($_POST['primary_color']),
         'logo_width' => trim($_POST['logo_width']),
-        'admin_logo_width' => trim($_POST['admin_logo_width'])
+        'admin_logo_width' => trim($_POST['admin_logo_width']),
+        'bunny_storage_name' => trim($_POST['bunny_storage_name']),
+        'bunny_api_key' => trim($_POST['bunny_api_key']),
+        'bunny_pull_url' => trim($_POST['bunny_pull_url']),
+        'bunny_region' => trim($_POST['bunny_region']),
+        'banner_slider_speed' => trim($_POST['banner_slider_speed']),
+        'banner_slider_auto' => isset($_POST['banner_slider_auto']) ? '1' : '0'
     ];
 
     // File uploads
@@ -108,6 +148,36 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
         $stmt = $pdo->prepare("REPLACE INTO settings (setting_key, setting_value) VALUES (?, ?)");
         $stmt->execute([$key, $val]);
     }
+
+    // Handle New Banner Upload
+    if (!empty($_FILES['banner_pc']['name']) && !empty($_FILES['banner_mobile']['name'])) {
+        $pc_banner = 'uploads/banners/' . uniqid() . '_pc_' . basename($_FILES['banner_pc']['name']);
+        $mob_banner = 'uploads/banners/' . uniqid() . '_mob_' . basename($_FILES['banner_mobile']['name']);
+        
+        if (!is_dir('../uploads/banners/')) mkdir('../uploads/banners/', 0777, true);
+        
+        if (move_uploaded_file($_FILES['banner_pc']['tmp_name'], '../' . $pc_banner) && 
+            move_uploaded_file($_FILES['banner_mobile']['tmp_name'], '../' . $mob_banner)) {
+            
+            $stmt = $pdo->prepare("INSERT INTO banners (image_pc, image_mobile, link_url) VALUES (?, ?, ?)");
+            $stmt->execute([$pc_banner, $mob_banner, trim($_POST['banner_link'])]);
+        }
+    }
+
+    header("Location: settings.php?msg=success");
+    exit;
+}
+
+if (isset($_GET['delete_banner'])) {
+    $id = (int)$_GET['delete_banner'];
+    $stmt = $pdo->prepare("SELECT image_pc, image_mobile FROM banners WHERE id = ?");
+    $stmt->execute([$id]);
+    $banner = $stmt->fetch();
+    if ($banner) {
+        if (file_exists('../' . $banner['image_pc'])) unlink('../' . $banner['image_pc']);
+        if (file_exists('../' . $banner['image_mobile'])) unlink('../' . $banner['image_mobile']);
+        $pdo->prepare("DELETE FROM banners WHERE id = ?")->execute([$id]);
+    }
     header("Location: settings.php?msg=success");
     exit;
 }
@@ -118,6 +188,8 @@ $current_settings = [];
 while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
     $current_settings[$row['setting_key']] = $row['setting_value'];
 }
+
+$banners = $pdo->query("SELECT * FROM banners ORDER BY order_num ASC")->fetchAll(PDO::FETCH_ASSOC);
 ?>
 <!DOCTYPE html>
 <html lang="<?php echo $lang; ?>">
@@ -171,7 +243,7 @@ while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         }
 
         .lang-pills-admin { display: flex; gap: 0.5rem; background: rgba(0,0,0,0.3); padding: 0.3rem; border-radius: 50px; }
-        .lang-pills-admin a { text-decoration: none; color: white; padding: 0.4rem 1rem; border-radius: 50px; font-size: 0.75rem; font-weight: 700; opacity: 0.4; }
+        .lang-pills-admin a { text-decoration: none; color: white; padding: 0.4rem 1rem; border-radius: 50px; font-size: 0.75rem; font-weight: 700; opacity: 0.4; transition: 0.3s; }
         .lang-pills-admin a.active { background: var(--primary-red); opacity: 1; }
 
         .main-pane {
@@ -233,39 +305,32 @@ while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             animation: slideIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275), fadeOut 0.5s ease-in 3.5s forwards;
         }
         .msg-toast.error { background: rgba(211, 47, 47, 0.95); border-color: #D32F2F; }
+        
+        .banner-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.5rem; margin-top: 2rem; }
+        .banner-card { 
+            background: rgba(255,255,255,0.03); border-radius: 20px; border: 1px solid rgba(255,255,255,0.05); padding: 1rem;
+            position: relative; transition: 0.3s;
+        }
+        .banner-card:hover { transform: translateY(-5px); border-color: var(--primary-red); }
+        .banner-card img { width: 100%; border-radius: 12px; height: 120px; object-fit: cover; margin-bottom: 0.8rem; }
+        .banner-badge { position: absolute; top: 1.5rem; left: 1.5rem; background: var(--primary-red); color: white; padding: 4px 10px; border-radius: 8px; font-size: 0.7rem; font-weight: 800; }
+        .banner-actions { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.05); pt: 0.8rem; mt: 0.5rem; padding-top: 10px; }
+        .btn-delete-banner { color: #f44336; font-size: 0.9rem; cursor: pointer; text-decoration: none; display: flex; align-items: center; gap: 5px; opacity: 0.6; transition: 0.3s; }
+        .btn-delete-banner:hover { opacity: 1; }
+        
+        .banner-upload-box { 
+            border: 2px dashed rgba(255,255,255,0.1); border-radius: 20px; padding: 2rem; text-align: center;
+            transition: 0.3s; cursor: pointer; background: rgba(0,0,0,0.2);
+        }
+        .banner-upload-box:hover { border-color: var(--primary-red); background: rgba(211, 47, 47, 0.03); }
+        
         @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
         @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; visibility: hidden; } }
 </style>
 </head>
 <body>
 
-<aside class="sidebar">
-    <?php if(!empty($current_settings['logo']) && file_exists('../' . $current_settings['logo'])): ?>
-        <div style="text-align: center; margin-bottom: 4rem;">
-            <img src="../<?php echo $current_settings['logo']; ?>" alt="Logo" style="width: <?php echo !empty($current_settings['admin_logo_width']) ? htmlspecialchars($current_settings['admin_logo_width']) : '200px'; ?>; max-width: 100%; object-fit: contain; filter: drop-shadow(0 0 20px rgba(211, 47, 47, 0.3));">
-        </div>
-    <?php else: ?>
-        <div class="sidebar-logo">ORAX</div>
-    <?php endif; ?>
-    
-    <ul class="side-nav">
-        <li><a href="dashboard.php"><i class="fas fa-th-large"></i> <?php echo $t['dashboard']; ?></a></li>
-        <li><a href="videos.php"><i class="fas fa-video"></i> <?php echo $t['videos']; ?></a></li>
-        <li><a href="categories.php"><i class="fas fa-folder"></i> <?php echo $t['categories']; ?></a></li>
-        <li><a href="users.php"><i class="fas fa-user-friends"></i> <?php echo $t['users']; ?></a></li>
-        <li><a href="settings.php" class="active"><i class="fas fa-cog"></i> <?php echo $t['settings']; ?></a></li>
-    </ul>
-
-    <div style="margin-top: auto;">
-        <div class="lang-pills-admin" style="margin-bottom: 1.5rem;">
-            <a href="?lang=en" class="<?php echo $lang == 'en' ? 'active' : ''; ?>">EN</a>
-            <a href="?lang=tr" class="<?php echo $lang == 'tr' ? 'active' : ''; ?>">TR</a>
-        </div>
-        <a href="logout.php" style="text-decoration: none; display: flex; align-items: center; gap: 1.2rem; padding: 1.2rem 1.5rem; background: rgba(255,255,255,0.03); border-radius: 15px; color: #888; width: 100%; font-weight: 600; transition: 0.3s;" onmouseover="this.style.background='rgba(211,47,47,0.1)'; this.style.color='var(--primary-red)';" onmouseout="this.style.background='rgba(255,255,255,0.03)'; this.style.color='#888';">
-            <i class="fas fa-power-off"></i> <?php echo $t['logout']; ?>
-        </a>
-    </div>
-</aside>
+<?php include 'includes/sidebar.php'; ?>
 
 <main class="main-pane">
     <header class="header-bar">
@@ -299,6 +364,8 @@ while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         <div class="tab active" onclick="switchTab('general')"><i class="fas fa-sliders-h"></i> <?php echo $t['tab_general']; ?></div>
         <div class="tab" onclick="switchTab('seo')"><i class="fas fa-search"></i> <?php echo $t['tab_seo']; ?></div>
         <div class="tab" onclick="switchTab('theme')"><i class="fas fa-paint-brush"></i> <?php echo $t['tab_theme']; ?></div>
+        <div class="tab" onclick="switchTab('banners')"><i class="fas fa-images"></i> <?php echo $t['tab_banners']; ?></div>
+        <div class="tab" onclick="switchTab('cdn')"><i class="fas fa-cloud-upload-alt"></i> <?php echo $t['tab_cdn']; ?></div>
     </div>
 
     <form method="POST" enctype="multipart/form-data">
@@ -402,6 +469,99 @@ while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
             </div>
         </div>
 
+        <!-- Banners Tab -->
+        <div class="tab-content" id="tab-banners">
+            <div class="settings-card">
+                <h3 style="margin-top: 0; margin-bottom: 2rem; color: var(--primary-red);"><i class="fas fa-cog"></i> Slider Ayarları</h3>
+                <div class="form-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
+                    <div class="input-group">
+                        <label><?php echo $t['banner_slider_speed']; ?></label>
+                        <input type="number" name="banner_slider_speed" value="<?php echo htmlspecialchars($current_settings['banner_slider_speed'] ?? '5'); ?>" min="1" max="60">
+                    </div>
+                    <div class="input-group" style="background: rgba(255,255,255,0.02); padding: 1.5rem; border-radius: 15px; border: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <label style="margin-bottom: 0; font-size: 1rem; color: #fff;"><?php echo $t['banner_slider_auto']; ?></label>
+                        </div>
+                        <label class="switch" style="position: relative; display: inline-block; width: 50px; height: 28px;">
+                            <input type="checkbox" name="banner_slider_auto" value="1" <?php echo (isset($current_settings['banner_slider_auto']) && $current_settings['banner_slider_auto'] == '1') ? 'checked' : ''; ?> style="opacity: 0; width: 0; height: 0;">
+                            <span class="slider round" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(255,255,255,0.1); transition: .4s; border-radius: 34px;"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.05); margin: 3rem 0;">
+
+                <h3 style="margin-top: 0; margin-bottom: 2rem; color: var(--primary-red);"><i class="fas fa-plus-circle"></i> <?php echo $t['add_banner']; ?></h3>
+                <div class="form-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
+                    <div class="input-group">
+                        <label><?php echo $t['banner_pc']; ?></label>
+                        <input type="file" name="banner_pc" accept="image/*">
+                    </div>
+                    <div class="input-group">
+                        <label><?php echo $t['banner_mobile']; ?></label>
+                        <input type="file" name="banner_mobile" accept="image/*">
+                    </div>
+                </div>
+                <div class="input-group">
+                    <label><?php echo $t['banner_link']; ?></label>
+                    <input type="text" name="banner_link" placeholder="https://...">
+                </div>
+
+                <h3 style="margin-top: 3rem; margin-bottom: 2rem; color: var(--primary-red);"><i class="fas fa-th-large"></i> <?php echo $t['banner_list']; ?></h3>
+                <div class="banner-grid">
+                    <?php if(empty($banners)): ?>
+                        <div style="grid-column: 1/-1; text-align: center; opacity: 0.5; padding: 2rem;"><?php echo $t['no_banners']; ?></div>
+                    <?php else: ?>
+                        <?php foreach($banners as $banner): ?>
+                            <div class="banner-card">
+                                <span class="banner-badge">Banner #<?php echo $banner['id']; ?></span>
+                                <div style="display: flex; gap: 10px;">
+                                    <div style="flex: 1;">
+                                        <small style="opacity: 0.5; display: block; margin-bottom: 5px;">PC</small>
+                                        <img src="../<?php echo $banner['image_pc']; ?>">
+                                    </div>
+                                    <div style="flex: 1;">
+                                        <small style="opacity: 0.5; display: block; margin-bottom: 5px;">Mobile</small>
+                                        <img src="../<?php echo $banner['image_mobile']; ?>">
+                                    </div>
+                                </div>
+                                <div class="banner-actions">
+                                    <div style="font-size: 0.75rem; opacity: 0.5; max-width: 70%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                        <i class="fas fa-link"></i> <?php echo $banner['link_url'] ? $banner['link_url'] : '-'; ?>
+                                    </div>
+                                    <a href="?delete_banner=<?php echo $banner['id']; ?>" class="btn-delete-banner" onclick="return confirm('Silmek istediğinize emin misiniz?')">
+                                        <i class="fas fa-trash"></i> Sil
+                                    </a>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
+
+        <!-- CDN Tab -->
+        <div class="tab-content" id="tab-cdn">
+            <div class="settings-card">
+                <div class="input-group">
+                    <label><?php echo $t['bunny_storage_name']; ?></label>
+                    <input type="text" name="bunny_storage_name" value="<?php echo htmlspecialchars($current_settings['bunny_storage_name'] ?? ''); ?>" placeholder="Örn: orax-storage">
+                </div>
+                <div class="input-group">
+                    <label><?php echo $t['bunny_api_key']; ?></label>
+                    <input type="text" name="bunny_api_key" value="<?php echo htmlspecialchars($current_settings['bunny_api_key'] ?? ''); ?>" placeholder="Access Key">
+                </div>
+                <div class="input-group">
+                    <label><?php echo $t['bunny_pull_url']; ?></label>
+                    <input type="text" name="bunny_pull_url" value="<?php echo htmlspecialchars($current_settings['bunny_pull_url'] ?? ''); ?>" placeholder="https://xxxx.b-cdn.net/">
+                </div>
+                <div class="input-group">
+                    <label><?php echo $t['bunny_region']; ?></label>
+                    <input type="text" name="bunny_region" value="<?php echo htmlspecialchars($current_settings['bunny_region'] ?? ''); ?>" placeholder="ny, sg, de (Varsayılan: de)">
+                </div>
+            </div>
+        </div>
+
         <button type="submit" class="btn-save"><i class="fas fa-save"></i> <?php echo $t['save']; ?></button>
     </form>
 </main>
@@ -418,3 +578,4 @@ while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
 
 </body>
 </html>
+

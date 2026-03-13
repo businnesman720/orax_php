@@ -4,7 +4,7 @@ include '../includes/db.php';
 
 // Dil ayarı (Rule 5: default English)
 if (!isset($_SESSION['admin_lang'])) {
-    $_SESSION['admin_lang'] = 'en';
+    $_SESSION['admin_lang'] = 'tr';
 }
 if (isset($_GET['lang'])) {
     $_SESSION['admin_lang'] = $_GET['lang'] == 'tr' ? 'tr' : 'en';
@@ -45,7 +45,9 @@ $texts = [
         'users' => 'Users',
         'settings' => 'Site Settings',
         'logout' => 'Safe Logout',
-        'view_site' => 'Live View'
+        'view_site' => 'Live View',
+        'reports' => 'Reports',
+        'source_bunny' => 'Bunny.net CDN'
     ],
     'tr' => [
         'title' => 'Video Yönetimi',
@@ -77,7 +79,9 @@ $texts = [
         'users' => 'Kullanıcılar',
         'settings' => 'Site Ayarları',
         'logout' => 'Güvenli Çıkış',
-        'view_site' => 'Siteyi Gör'
+        'view_site' => 'Siteyi Gör',
+        'reports' => 'Raporlar',
+        'source_bunny' => 'Bunny.net CDN (Önerilen)'
     ]
 ];
 $t = $texts[$lang];
@@ -105,6 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
     $desc_en = !empty($_POST['desc_en']) ? $_POST['desc_en'] : $desc_tr;
     $video_type = $_POST['video_type'];
     $duration = $_POST['duration'];
+    $quality = $_POST['quality'] ?? 'HD';
     $slug = generateSlug($title_en);
 
     // Video URL or File
@@ -115,6 +120,56 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
             $filename = uniqid('vid_') . '.' . $ext;
             move_uploaded_file($_FILES['video_file']['tmp_name'], "../uploads/videos/" . $filename);
             $video_url = "uploads/videos/" . $filename;
+        } elseif (!empty($_POST['existing_video_url'])) {
+            $video_url = $_POST['existing_video_url'];
+        }
+    }
+
+    if ($video_type == 'bunny') {
+        if (isset($_FILES['video_file']) && $_FILES['video_file']['error'] == 0) {
+            $bunny_storage = $current_settings['bunny_storage_name'] ?? '';
+            $bunny_api_key = $current_settings['bunny_api_key'] ?? '';
+            $bunny_pull_url = $current_settings['bunny_pull_url'] ?? '';
+            $bunny_region = !empty($current_settings['bunny_region']) ? $current_settings['bunny_region'] : 'de';
+
+            if ($bunny_storage && $bunny_api_key && $bunny_pull_url) {
+                $ext = pathinfo($_FILES['video_file']['name'], PATHINFO_EXTENSION);
+                $filename = uniqid('cdn_') . '.' . $ext;
+                
+                $base_url = "https://storage.bunnycdn.com";
+                if ($bunny_region != 'de' && !empty($bunny_region)) {
+                    $base_url = "https://{$bunny_region}.storage.bunnycdn.com";
+                }
+                
+                $upload_url = "{$base_url}/{$bunny_storage}/{$filename}";
+
+                $ch = curl_init();
+                curl_setopt($ch, CURLOPT_URL, $upload_url);
+                curl_setopt($ch, CURLOPT_PUT, 1);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+                curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                    "AccessKey: {$bunny_api_key}",
+                    "Content-Type: application/octet-stream",
+                ]);
+                
+                $fh = fopen($_FILES['video_file']['tmp_name'], 'r');
+                curl_setopt($ch, CURLOPT_INFILE, $fh);
+                curl_setopt($ch, CURLOPT_INFILESIZE, filesize($_FILES['video_file']['tmp_name']));
+
+                $response = curl_exec($ch);
+                $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                curl_close($ch);
+                fclose($fh);
+
+                if ($http_code == 201 || $http_code == 200) {
+                    $video_url = rtrim($bunny_pull_url, '/') . '/' . $filename;
+                    // Video tipini artık 'url' olarak kaydedebiliriz çünkü direkt link oldu
+                    // Ama 'bunny' olarak kalsın ki ayırt edilebilsin
+                } else {
+                    header("Location: videos.php?msg=error_cdn");
+                    exit;
+                }
+            }
         } elseif (!empty($_POST['existing_video_url'])) {
             $video_url = $_POST['existing_video_url'];
         }
@@ -151,12 +206,15 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
         error_log("Using existing thumbnail: " . $thumbnail);
     }
 
+    // Premium Flag
+    $is_premium = isset($_POST['is_premium']) ? 1 : 0;
+
     if ($id) {
-        $stmt = $pdo->prepare("UPDATE videos SET category_id=?, title_tr=?, title_en=?, description_tr=?, description_en=?, video_url=?, video_type=?, duration=?, thumbnail=?, slug=? WHERE id=?");
-        $stmt->execute([$category_id, $title_tr, $title_en, $desc_tr, $desc_en, $video_url, $video_type, $duration, $thumbnail, $slug, $id]);
+        $stmt = $pdo->prepare("UPDATE videos SET category_id=?, title_tr=?, title_en=?, description_tr=?, description_en=?, video_url=?, video_type=?, duration=?, quality=?, thumbnail=?, slug=?, is_premium=? WHERE id=?");
+        $stmt->execute([$category_id, $title_tr, $title_en, $desc_tr, $desc_en, $video_url, $video_type, $duration, $quality, $thumbnail, $slug, $is_premium, $id]);
     } else {
-        $stmt = $pdo->prepare("INSERT INTO videos (category_id, title_tr, title_en, description_tr, description_en, video_url, video_type, duration, thumbnail, slug) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        $stmt->execute([$category_id, $title_tr, $title_en, $desc_tr, $desc_en, $video_url, $video_type, $duration, $thumbnail, $slug]);
+        $stmt = $pdo->prepare("INSERT INTO videos (category_id, title_tr, title_en, description_tr, description_en, video_url, video_type, duration, quality, thumbnail, slug, is_premium) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt->execute([$category_id, $title_tr, $title_en, $desc_tr, $desc_en, $video_url, $video_type, $duration, $quality, $thumbnail, $slug, $is_premium]);
     }
     header("Location: videos.php?msg=success");
     exit;
@@ -299,33 +357,7 @@ while ($row = $stmt_settings->fetch(PDO::FETCH_ASSOC)) {
 </head>
 <body>
 
-<aside class="sidebar">
-    <?php if(!empty($current_settings['logo']) && file_exists('../' . $current_settings['logo'])): ?>
-        <div style="text-align: center; margin-bottom: 4rem;">
-            <img src="../<?php echo $current_settings['logo']; ?>" alt="Logo" style="width: <?php echo !empty($current_settings['admin_logo_width']) ? htmlspecialchars($current_settings['admin_logo_width']) : '200px'; ?>; max-width: 100%; object-fit: contain; filter: drop-shadow(0 0 20px rgba(211, 47, 47, 0.3));">
-        </div>
-    <?php else: ?>
-        <div class="sidebar-logo">ORAX</div>
-    <?php endif; ?>
-    
-    <ul class="side-nav">
-        <li><a href="dashboard.php"><i class="fas fa-th-large"></i> <?php echo $t['dashboard']; ?></a></li>
-        <li><a href="videos.php" class="active"><i class="fas fa-video"></i> <?php echo $t['videos']; ?></a></li>
-        <li><a href="categories.php"><i class="fas fa-folder"></i> <?php echo $t['categories']; ?></a></li>
-        <li><a href="users.php"><i class="fas fa-user-friends"></i> <?php echo $t['users']; ?></a></li>
-        <li><a href="settings.php"><i class="fas fa-cog"></i> <?php echo $t['settings']; ?></a></li>
-    </ul>
-
-    <div style="margin-top: auto;">
-        <div class="lang-pills-admin" style="margin-bottom: 1.5rem;">
-            <a href="?lang=en" class="<?php echo $lang == 'en' ? 'active' : ''; ?>">EN</a>
-            <a href="?lang=tr" class="<?php echo $lang == 'tr' ? 'active' : ''; ?>">TR</a>
-        </div>
-        <a href="logout.php" style="text-decoration: none; display: flex; align-items: center; gap: 1.2rem; padding: 1.2rem 1.5rem; background: rgba(255,255,255,0.03); border-radius: 15px; color: #888; width: 100%; font-weight: 600; transition: 0.3s;" onmouseover="this.style.background='rgba(211,47,47,0.1)'; this.style.color='var(--primary-red)';" onmouseout="this.style.background='rgba(255,255,255,0.03)'; this.style.color='#888';">
-            <i class="fas fa-power-off"></i> <?php echo $t['logout']; ?>
-        </a>
-    </div>
-</aside>
+<?php include 'includes/sidebar.php'; ?>
 
 <main class="main-pane">
     <header class="header-bar">
@@ -383,7 +415,12 @@ while ($row = $stmt_settings->fetch(PDO::FETCH_ASSOC)) {
                     ?>
                     <img src="<?php echo $thumb_src; ?>" class="thumb-mini" onerror="this.onerror=null; this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQwIiBoZWlnaHQ9IjM2MCIgdmlld0JveD0iMCAwIDY0MCAzNjAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjY0MCIgaGVpZ2h0PSIzNjAiIGZpbGw9IiMxYTFhMWEiLz48L3N2Zz4=';">
                     <div>
-                        <div style="font-weight: 700;"><?php echo htmlspecialchars($v['title_tr']); ?></div>
+                        <div style="font-weight: 700;">
+                            <?php echo htmlspecialchars($v['title_tr']); ?>
+                            <?php if(isset($v['is_premium']) && $v['is_premium']): ?>
+                                <span style="background: gold; color: black; font-size: 0.6rem; padding: 2px 6px; border-radius: 4px; vertical-align: middle; margin-left: 5px; font-weight: 950;"><i class="fas fa-gem"></i> PREMIUM</span>
+                            <?php endif; ?>
+                        </div>
                         <div style="font-size: 0.75rem; opacity: 0.3;"><?php echo $v['slug']; ?></div>
                     </div>
                 </td>
@@ -437,12 +474,22 @@ while ($row = $stmt_settings->fetch(PDO::FETCH_ASSOC)) {
                                 <option value="url">Link / URL</option>
                                 <option value="embed">Embed Code</option>
                                 <option value="file">Local File</option>
-                                <option value="cdn">CDN</option>
+                                <option value="bunny"><?php echo $t['source_bunny']; ?></option>
                             </select>
                         </div>
                         <div class="input-group">
                             <label><?php echo $t['duration']; ?></label>
                             <input type="text" name="duration" id="v_duration" placeholder="0:00">
+                        </div>
+                        <div class="input-group">
+                            <label>Kalite</label>
+                            <select name="quality" id="v_quality">
+                                <option value="HD">HD</option>
+                                <option value="4K">4K</option>
+                                <option value="1080p">1080p</option>
+                                <option value="720p">720p</option>
+                                <option value="VR">VR / 360°</option>
+                            </select>
                         </div>
                     </div>
                     <div class="input-group" id="url-input-div">
@@ -453,6 +500,12 @@ while ($row = $stmt_settings->fetch(PDO::FETCH_ASSOC)) {
                         <label><?php echo $t['file']; ?></label>
                         <input type="file" name="video_file" id="v_file" accept="video/*" onchange="handleLocalVideo(this)">
                         <div id="current-file-display" style="font-size: 0.75rem; color: var(--primary-red); margin-top: 5px; opacity: 0.8;"></div>
+                    </div>
+                    <div class="input-group" style="background: rgba(255,215,0,0.05); padding: 1.5rem; border-radius: 18px; border: 1px dashed rgba(255,215,0,0.3);">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: gold; font-weight: 900; margin-bottom: 0;">
+                            <input type="checkbox" name="is_premium" id="v_is_premium" style="width: auto;">
+                            <i class="fas fa-crown"></i> <?php echo ($lang == 'tr' ? 'PREMIUM VIDEO (SADECE VIP)' : 'PREMIUM VIDEO (VIP ONLY)'); ?>
+                        </label>
                     </div>
                 </div>
 
@@ -520,8 +573,8 @@ function closeModal() {
 }
 
 function toggleVideoInputs(type) {
-    document.getElementById('url-input-div').style.display = (type == 'file') ? 'none' : 'block';
-    document.getElementById('file-input-div').style.display = (type == 'file') ? 'block' : 'none';
+    document.getElementById('url-input-div').style.display = (type == 'file' || type == 'bunny') ? 'none' : 'block';
+    document.getElementById('file-input-div').style.display = (type == 'file' || type == 'bunny') ? 'block' : 'none';
 }
 
 function loadThumb(url) {
@@ -699,11 +752,13 @@ function editVideo(v) {
     document.getElementById('v_type').value = v.video_type;
     toggleVideoInputs(v.video_type);
     document.getElementById('v_url').value = v.video_url || "";
+    document.getElementById('v_quality').value = v.quality || "HD";
     document.getElementById('existing_video_url').value = v.video_url || "";
     document.getElementById('existing_thumbnail').value = v.thumbnail || "";
     document.getElementById('v_duration').value = v.duration || "0:00";
     document.getElementById('v_desc_tr').value = v.description_tr || "";
     if(document.getElementById('v_desc_en')) document.getElementById('v_desc_en').value = v.description_en || "";
+    document.getElementById('v_is_premium').checked = (v.is_premium == 1);
     
     // Load existing video into temp-video for frame capture if it's a file
     const fileDisplay = document.getElementById('current-file-display');
@@ -734,3 +789,4 @@ function ltrim(str, chars) {
 
 </body>
 </html>
+

@@ -6,4 +6,9 @@ if (!isset($_SESSION['admin_logged_in']) || $_SESSION['admin_logged_in'] !== tru
     header("Location: $base_path/login.php");
     exit;
 }
+if (!isset($_SESSION['admin_lang_forced'])) {
+    $_SESSION['admin_lang'] = 'tr';
+    $_SESSION['admin_lang_forced'] = true;
+}
 ?>
+

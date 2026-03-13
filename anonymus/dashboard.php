@@ -4,7 +4,7 @@ include '../includes/db.php';
 
 // Dil ayarı (Rule 5: default English)
 if (!isset($_SESSION['admin_lang'])) {
-    $_SESSION['admin_lang'] = 'en';
+    $_SESSION['admin_lang'] = 'tr';
 }
 if (isset($_GET['lang'])) {
     $_SESSION['admin_lang'] = $_GET['lang'] == 'tr' ? 'tr' : 'en';
@@ -29,7 +29,10 @@ $texts = [
         'videos' => 'Videos',
         'categories' => 'Categories',
         'users' => 'Users',
-        'settings' => 'Site Settings'
+        'settings' => 'Site Settings',
+        'reports' => 'Reports',
+        'payment_requests' => 'Payment Requests',
+        'payment_methods' => 'Payment Methods'
     ],
     'tr' => [
         'title' => 'Yönetim Paneli',
@@ -45,7 +48,10 @@ $texts = [
         'videos' => 'Videolar',
         'categories' => 'Kategoriler',
         'users' => 'Kullanıcılar',
-        'settings' => 'Site Ayarları'
+        'settings' => 'Site Ayarları',
+        'reports' => 'Raporlar',
+        'payment_requests' => 'Bakiye Talepleri',
+        'payment_methods' => 'Ödeme Yöntemleri'
     ]
 ];
 $t = $texts[$lang];
@@ -106,8 +112,11 @@ for($i = 5; $i >= 0; $i--) {
     $views = $stmt->fetchColumn();
     
     $line_labels[] = $monthName;
-    $line_values[] = $views ? $views : 0;
+    $line_values[] = (int)$views;
 }
+// VIP User Stats
+$vip_count = $pdo->query("SELECT COUNT(*) FROM users WHERE is_vip = 1")->fetchColumn();
+$regular_count = $user_count - $vip_count;
 
 // Get current settings
 $stmt_settings = $pdo->query("SELECT * FROM settings");
@@ -240,33 +249,7 @@ while ($row = $stmt_settings->fetch(PDO::FETCH_ASSOC)) {
 </head>
 <body>
 
-<aside class="sidebar">
-    <?php if(!empty($current_settings['logo']) && file_exists('../' . $current_settings['logo'])): ?>
-        <div style="text-align: center; margin-bottom: 4rem;">
-            <img src="../<?php echo $current_settings['logo']; ?>" alt="Logo" style="width: <?php echo !empty($current_settings['admin_logo_width']) ? htmlspecialchars($current_settings['admin_logo_width']) : '200px'; ?>; max-width: 100%; object-fit: contain; filter: drop-shadow(0 0 20px rgba(211, 47, 47, 0.3));">
-        </div>
-    <?php else: ?>
-        <div class="sidebar-logo">ORAX</div>
-    <?php endif; ?>
-    
-    <ul class="side-nav">
-        <li><a href="dashboard.php" class="active"><i class="fas fa-th-large"></i> <?php echo $t['dashboard']; ?></a></li>
-        <li><a href="videos.php"><i class="fas fa-video"></i> <?php echo $t['videos']; ?></a></li>
-        <li><a href="categories.php"><i class="fas fa-folder"></i> <?php echo $t['categories']; ?></a></li>
-        <li><a href="users.php"><i class="fas fa-user-friends"></i> <?php echo $t['users']; ?></a></li>
-        <li><a href="settings.php"><i class="fas fa-cog"></i> <?php echo $t['settings']; ?></a></li>
-    </ul>
-
-    <div style="margin-top: auto;">
-        <div class="lang-pills-admin" style="margin-bottom: 1.5rem;">
-            <a href="?lang=en" class="<?php echo $lang == 'en' ? 'active' : ''; ?>">EN</a>
-            <a href="?lang=tr" class="<?php echo $lang == 'tr' ? 'active' : ''; ?>">TR</a>
-        </div>
-        <a href="logout.php" class="btn btn-primary btn-block" style="background: rgba(255,255,255,0.05); color: #888; border: none;">
-            <i class="fas fa-power-off"></i> <?php echo $t['logout']; ?>
-        </a>
-    </div>
-</aside>
+<?php include 'includes/sidebar.php'; ?>
 
 <main class="main-pane">
     <header class="header-bar">
@@ -312,10 +295,10 @@ while ($row = $stmt_settings->fetch(PDO::FETCH_ASSOC)) {
             <div style="color: #4caf50; font-size: 0.85rem; font-weight: 700;">&nbsp;</div>
         </div>
         <div class="premium-card">
-            <i class="fas fa-user-shield"></i>
-            <div class="stat-label"><?php echo $t['stats_user']; ?></div>
-            <div class="stat-val"><?php echo $user_count; ?></div>
-            <div style="color: #4caf50; font-size: 0.85rem; font-weight: 700;">+ <?php echo $user_today; ?> <?php echo $lang == 'tr' ? 'Bugün yeni' : 'New today'; ?></div>
+            <i class="fas fa-crown"></i>
+            <div class="stat-label"><?php echo $lang == 'tr' ? 'VIP Üyeler' : 'VIP Members'; ?></div>
+            <div class="stat-val"><?php echo $vip_count; ?></div>
+            <div style="color: #ffc107; font-size: 0.85rem; font-weight: 700;">Premium Access</div>
         </div>
     </div>
 
@@ -325,8 +308,12 @@ while ($row = $stmt_settings->fetch(PDO::FETCH_ASSOC)) {
             <canvas id="mainChart" height="250"></canvas>
         </div>
         <div class="chart-box">
-            <h3><?php echo $t['chart_pie']; ?> (Rule 4: Pie Chart)</h3>
+            <h3><?php echo $t['chart_pie']; ?></h3>
             <canvas id="pieChart" height="250"></canvas>
+        </div>
+        <div class="chart-box">
+            <h3><?php echo $lang == 'tr' ? 'VIP Dağılımı' : 'VIP Distribution'; ?></h3>
+            <canvas id="vipChart" height="250"></canvas>
         </div>
     </div>
 </main>
@@ -391,7 +378,27 @@ while ($row = $stmt_settings->fetch(PDO::FETCH_ASSOC)) {
             animation: { animateRotate: true, animateScale: true }
         }
     });
+
+    // VIP Chart
+    const vipCtx = document.getElementById('vipChart').getContext('2d');
+    new Chart(vipCtx, {
+        type: 'doughnut',
+        data: {
+            labels: [<?php echo $lang == 'tr' ? "'Normal', 'VIP'" : "'Regular', 'VIP'"; ?>],
+            datasets: [{
+                data: [<?php echo "$regular_count, $vip_count"; ?>],
+                backgroundColor: ['#444', '#FFD700'],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { position: 'bottom', labels: { color: 'rgba(255,255,255,0.6)' } } },
+            animation: { animateScale: true }
+        }
+    });
 </script>
 
 </body>
 </html>
+

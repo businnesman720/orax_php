@@ -5,7 +5,7 @@ $error = '';
 
 // Dil ayarı (Rule 5: default English)
 if (!isset($_SESSION['admin_lang'])) {
-    $_SESSION['admin_lang'] = 'en';
+    $_SESSION['admin_lang'] = 'tr';
 }
 if (isset($_GET['lang'])) {
     $_SESSION['admin_lang'] = $_GET['lang'] == 'tr' ? 'tr' : 'en';
@@ -235,3 +235,4 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 </script>
 </body>
 </html>
+
