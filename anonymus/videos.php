@@ -47,7 +47,9 @@ $texts = [
         'logout' => 'Safe Logout',
         'view_site' => 'Live View',
         'reports' => 'Reports',
-        'source_bunny' => 'Bunny.net CDN'
+        'source_bunny' => 'Bunny.net Storage',
+        'source_bunny_stream' => 'Bunny.net Stream (Recommended)',
+        'error_large_file' => 'Error: File too large for server limits! Reset php.ini configuration (Recommended: 1024M)'
     ],
     'tr' => [
         'title' => 'Video Yönetimi',
@@ -81,7 +83,9 @@ $texts = [
         'logout' => 'Güvenli Çıkış',
         'view_site' => 'Siteyi Gör',
         'reports' => 'Raporlar',
-        'source_bunny' => 'Bunny.net CDN (Önerilen)'
+        'source_bunny' => 'Bunny.net Storage',
+        'source_bunny_stream' => 'Bunny.net Stream (Önerilen)',
+        'error_large_file' => 'Hata: Dosya sunucu limitine takıldı! php.ini ayarlarını (Örn: 1024M) yükseltin.'
     ]
 ];
 $t = $texts[$lang];
@@ -99,8 +103,21 @@ function generateSlug($text) {
     return $text;
 }
 
+// Get current settings
+$stmt_settings = $pdo->query("SELECT * FROM settings");
+$current_settings = [];
+while ($row = $stmt_settings->fetch(PDO::FETCH_ASSOC)) {
+    $current_settings[$row['setting_key']] = $row['setting_value'];
+}
+
 // Handle Form POST
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
+    // 40MB PHP limit check: If POST is empty but method is POST, file was too large
+    if (empty($_POST) || empty($_FILES) && $_POST['action'] == 'add') {
+        header("Location: videos.php?msg=error_large_file");
+        exit;
+    }
+
     $id = $_POST['id'] ?? null;
     $category_id = $_POST['category_id'];
     $title_tr = $_POST['title_tr'];
@@ -175,6 +192,70 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
         }
     }
 
+    if ($video_type == 'bunny_stream') {
+        if (isset($_FILES['video_file']) && $_FILES['video_file']['error'] == 0) {
+            $library_id = $current_settings['bunny_stream_library_id'] ?? '';
+            $api_key = $current_settings['bunny_stream_api_key'] ?? '';
+            $pull_url = $current_settings['bunny_stream_pull_url'] ?? '';
+
+            if ($library_id && $api_key) {
+                // 1. Create video object in Bunny Stream
+                $ch = curl_init();
+                curl_setopt($ch, CURLOPT_URL, "https://video.bunnycdn.com/library/{$library_id}/videos");
+                curl_setopt($ch, CURLOPT_POST, 1);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+                curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                    "AccessKey: {$api_key}",
+                    "Content-Type: application/json",
+                ]);
+                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(["title" => $title_tr]));
+                $response = curl_exec($ch);
+                $resp_data = json_decode($response, true);
+                curl_close($ch);
+
+                if (isset($resp_data['guid'])) {
+                    $guid = $resp_data['guid'];
+                    
+                    // 2. Upload the file
+                    $ch = curl_init();
+                    curl_setopt($ch, CURLOPT_URL, "https://video.bunnycdn.com/library/{$library_id}/videos/{$guid}");
+                    curl_setopt($ch, CURLOPT_PUT, 1);
+                    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+                    curl_setopt($ch, CURLOPT_HTTPHEADER, ["AccessKey: {$api_key}"]);
+                    
+                    $fh = fopen($_FILES['video_file']['tmp_name'], 'r');
+                    curl_setopt($ch, CURLOPT_INFILE, $fh);
+                    curl_setopt($ch, CURLOPT_INFILESIZE, filesize($_FILES['video_file']['tmp_name']));
+                    
+                    $upload_resp = curl_exec($ch);
+                    $upload_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                    curl_close($ch);
+                    fclose($fh);
+
+                    if ($upload_code == 200 || $upload_code == 201) {
+                        // Ensure hostname is full URL
+                        if (strpos($pull_url, '.b-cdn.net') === false && !empty($pull_url)) {
+                            $pull_url .= '.b-cdn.net';
+                        }
+                        $video_url = "https://{$pull_url}/{$guid}/playlist.m3u8";
+                        // Automatically set thumbnail if empty
+                        if (empty($thumbnail)) {
+                            $thumbnail = "https://{$pull_url}/{$guid}/thumbnail.jpg";
+                        }
+                    } else {
+                        header("Location: videos.php?msg=error_bunny_upload");
+                        exit;
+                    }
+                } else {
+                    header("Location: videos.php?msg=error_bunny_create");
+                    exit;
+                }
+            }
+        } elseif (!empty($_POST['existing_video_url'])) {
+            $video_url = $_POST['existing_video_url'];
+        }
+    }
+
     // Thumbnail
     $thumbnail = $_POST['thumbnail_url'] ?? '';
     
@@ -229,13 +310,6 @@ if (isset($_GET['delete'])) {
 
 $videos = $pdo->query("SELECT v.*, c.name_en as cat_name FROM videos v LEFT JOIN categories c ON v.category_id = c.id ORDER BY v.id DESC")->fetchAll();
 $categories = $pdo->query("SELECT * FROM categories")->fetchAll();
-
-// Get current settings
-$stmt_settings = $pdo->query("SELECT * FROM settings");
-$current_settings = [];
-while ($row = $stmt_settings->fetch(PDO::FETCH_ASSOC)) {
-    $current_settings[$row['setting_key']] = $row['setting_value'];
-}
 ?>
 <!DOCTYPE html>
 <html lang="<?php echo $lang; ?>">
@@ -375,11 +449,10 @@ while ($row = $stmt_settings->fetch(PDO::FETCH_ASSOC)) {
         </div>
     </header>
     <?php if(isset($_GET['msg'])): ?>
-        <div class="msg-toast <?php echo $_GET['msg'] == 'error' ? 'error' : ''; ?>">
-            <i class="fas <?php echo $_GET['msg'] == 'error' ? 'fa-exclamation-circle' : 'fa-check-circle'; ?>"></i>
+        <div class="msg-toast <?php echo $_GET['msg'] == 'success' ? '' : 'error'; ?>">
+            <i class="fas <?php echo $_GET['msg'] == 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'; ?>"></i>
             <?php 
-                if($_GET['msg'] == 'success') echo isset($t['saved']) ? $t['saved'] : 'İşlem Başarılı!';
-                else echo 'Bir hata oluştu!';
+                echo $t[$_GET['msg']] ?? ($_GET['msg'] == 'success' ? 'İşlem Başarılı!' : 'Bir hata oluştu!');
             ?>
         </div>
         <script>
@@ -474,6 +547,7 @@ while ($row = $stmt_settings->fetch(PDO::FETCH_ASSOC)) {
                                 <option value="url">Link / URL</option>
                                 <option value="embed">Embed Code</option>
                                 <option value="file">Local File</option>
+                                <option value="bunny_stream"><?php echo $t['source_bunny_stream']; ?></option>
                                 <option value="bunny"><?php echo $t['source_bunny']; ?></option>
                             </select>
                         </div>
@@ -573,8 +647,8 @@ function closeModal() {
 }
 
 function toggleVideoInputs(type) {
-    document.getElementById('url-input-div').style.display = (type == 'file' || type == 'bunny') ? 'none' : 'block';
-    document.getElementById('file-input-div').style.display = (type == 'file' || type == 'bunny') ? 'block' : 'none';
+    document.getElementById('url-input-div').style.display = (type == 'file' || type == 'bunny' || type == 'bunny_stream') ? 'none' : 'block';
+    document.getElementById('file-input-div').style.display = (type == 'file' || type == 'bunny' || type == 'bunny_stream') ? 'block' : 'none';
 }
 
 function loadThumb(url) {

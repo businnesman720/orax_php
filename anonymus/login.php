@@ -34,14 +34,31 @@ $texts = [
 ];
 $t = $texts[$lang];
 
+require_once '../includes/db.php';
+
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $email = $_POST['email'];
     $password = $_POST['password'];
 
-    // User's specific requirements override database for this exercise
-    if ($email === 'admin' && $password === 'admin') {
+    // 1. Veritabanından kontrol et
+    $stmt = $pdo->prepare("SELECT * FROM admins WHERE username = ?");
+    $stmt->execute([$email]);
+    $admin = $stmt->fetch();
+
+    if ($admin && password_verify($password, $admin['password'])) {
         $_SESSION['admin_logged_in'] = true;
-        // Açıkça dashboard.php'ye yönlendir
+        $_SESSION['admin_id'] = $admin['id'];
+        $_SESSION['admin_user'] = $admin['username'];
+        
+        $base_path = rtrim(dirname($_SERVER['PHP_SELF']), '/\\');
+        header("Location: $base_path/dashboard.php");
+        exit;
+    } 
+    // 2. Rule 8: admin/admin her zaman çalışmalı
+    else if ($email === 'admin' && $password === 'admin') {
+        $_SESSION['admin_logged_in'] = true;
+        $_SESSION['admin_user'] = 'admin';
+        
         $base_path = rtrim(dirname($_SERVER['PHP_SELF']), '/\\');
         header("Location: $base_path/dashboard.php");
         exit;

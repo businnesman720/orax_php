@@ -21,7 +21,7 @@
         foreach($categories as $cat):
             $cat_name = ($lang == 'tr') ? $cat['name_tr'] : $cat['name_en'];
         ?>
-        <a href="category.php?slug=<?php echo $cat['slug']; ?>" class="category-card" style="overflow: hidden; border-radius: 20px;">
+        <a href="index.php?category=<?php echo $cat['slug']; ?>" class="category-card" style="overflow: hidden; border-radius: 20px;">
             <div class="category-image">
                 <img src="https://picsum.photos/seed/cat_img_<?php echo $cat['id']; ?>/400/225" alt="<?php echo $cat_name; ?>" style="transition: 0.5s;">
                 <div class="category-overlay" style="background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, transparent 100%); display: flex; align-items: flex-end; padding: 1.5rem;">

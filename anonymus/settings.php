@@ -49,6 +49,9 @@ $texts = [
         'bunny_api_key' => 'Storage API Key (Access Key)',
         'bunny_pull_url' => 'Pull Zone URL (e.g. https://orax.b-cdn.net/)',
         'bunny_region' => 'Storage Region (e.g. ny, sg, de - leave blank for default)',
+        'bunny_stream_library_id' => 'Stream Library ID',
+        'bunny_stream_api_key' => 'Stream API Key',
+        'bunny_stream_pull_url' => 'Stream Pull Zone / Custom Hostname',
         'tab_banners' => 'Banners & Slider',
         'banner_slider_speed' => 'Slide Speed (Seconds)',
         'banner_slider_auto' => 'Auto-Slide Enabled',
@@ -93,7 +96,10 @@ $texts = [
         'bunny_storage_name' => 'Storage Zone Adı',
         'bunny_api_key' => 'Storage API Anahtarı (Access Key)',
         'bunny_pull_url' => 'Pull Zone Linki (Örn: https://orax.b-cdn.net/)',
-        'bunny_region' => 'Storage Bölgesi (Örn: ny, sg, de - varsayılan için boş bırakın)',
+        'bunny_region' => 'Storage Bölgesi (ny, sg, de)',
+        'bunny_stream_library_id' => 'Stream Library ID',
+        'bunny_stream_api_key' => 'Stream API Anahtarı',
+        'bunny_stream_pull_url' => 'Stream Hostname / Pull Zone',
         'tab_banners' => 'Bannerlar & Slider',
         'banner_slider_speed' => 'Kayma Hızı (Saniye)',
         'banner_slider_auto' => 'Otomatik Kaydırma Aktif',
@@ -124,6 +130,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action']) && $_POST['a
         'bunny_api_key' => trim($_POST['bunny_api_key']),
         'bunny_pull_url' => trim($_POST['bunny_pull_url']),
         'bunny_region' => trim($_POST['bunny_region']),
+        'bunny_stream_library_id' => trim($_POST['bunny_stream_library_id']),
+        'bunny_stream_api_key' => trim($_POST['bunny_stream_api_key']),
+        'bunny_stream_pull_url' => trim($_POST['bunny_stream_pull_url']),
         'banner_slider_speed' => trim($_POST['banner_slider_speed']),
         'banner_slider_auto' => isset($_POST['banner_slider_auto']) ? '1' : '0'
     ];
@@ -558,6 +567,20 @@ $banners = $pdo->query("SELECT * FROM banners ORDER BY order_num ASC")->fetchAll
                 <div class="input-group">
                     <label><?php echo $t['bunny_region']; ?></label>
                     <input type="text" name="bunny_region" value="<?php echo htmlspecialchars($current_settings['bunny_region'] ?? ''); ?>" placeholder="ny, sg, de (Varsayılan: de)">
+                </div>
+                <hr style="opacity: 0.1; margin: 2rem 0;">
+                <h3 style="color: #00bcd4; margin-bottom: 2rem;"><i class="fas fa-play"></i> Bunny.net Stream (Video Streaming)</h3>
+                <div class="input-group">
+                    <label><?php echo $t['bunny_stream_library_id']; ?></label>
+                    <input type="text" name="bunny_stream_library_id" value="<?php echo htmlspecialchars($current_settings['bunny_stream_library_id'] ?? ''); ?>" placeholder="Library ID">
+                </div>
+                <div class="input-group">
+                    <label><?php echo $t['bunny_stream_api_key']; ?></label>
+                    <input type="text" name="bunny_stream_api_key" value="<?php echo htmlspecialchars($current_settings['bunny_stream_api_key'] ?? ''); ?>" placeholder="API Key">
+                </div>
+                <div class="input-group">
+                    <label><?php echo $t['bunny_stream_pull_url']; ?></label>
+                    <input type="text" name="bunny_stream_pull_url" value="<?php echo htmlspecialchars($current_settings['bunny_stream_pull_url'] ?? ''); ?>" placeholder="vz-xxxx.b-cdn.net">
                 </div>
             </div>
         </div>

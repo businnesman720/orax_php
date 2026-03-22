@@ -31,7 +31,7 @@ include 'includes/db.php';
     $f_quality = $_GET['quality'] ?? 'all';
     $f_date = $_GET['date'] ?? 'all';
     $f_sort = $_GET['sort'] ?? 'newest';
-
+    $f_category = $_GET['category'] ?? 'all';
 
     $limit = 30; // Kullanıcı isteği: Sayfa başı 30 video
     $initial_limit = $is_mobile ? 10 : 30; // Mobil için başlangıçta 10, PC için 30
@@ -40,6 +40,16 @@ include 'includes/db.php';
     // Base SQL
     $where_clauses = ["1=1"];
     $params = [];
+
+    if ($f_category !== 'all') {
+        $stmt_cat = $pdo->prepare("SELECT id, name_tr, name_en FROM categories WHERE slug = ?");
+        $stmt_cat->execute([$f_category]);
+        $active_cat = $stmt_cat->fetch();
+        if ($active_cat) {
+            $where_clauses[] = "category_id = ?";
+            $params[] = $active_cat['id'];
+        }
+    }
 
     if ($q) {
         $where_clauses[] = "(title_tr LIKE ? OR title_en LIKE ?)";
@@ -84,7 +94,11 @@ include 'includes/db.php';
     $stmt->execute($params);
     $videos = $stmt->fetchAll();
 
-    $title_text = $q ? ($lang == 'tr' ? "'$q' için sonuçlar" : "Results for '$q'") : $t['popular_real'];
+    if ($f_category !== 'all' && isset($active_cat)) {
+        $title_text = ($lang == 'tr') ? $active_cat['name_tr'] : $active_cat['name_en'];
+    } else {
+        $title_text = $q ? ($lang == 'tr' ? "'$q' için sonuçlar" : "Results for '$q'") : $t['popular_real'];
+    }
     
     $total_pages = ceil($total_videos / $limit);
     if ($total_pages < 1) $total_pages = 1;
@@ -109,11 +123,83 @@ include 'includes/db.php';
                 <button onclick="toggleFilters()" class="btn" style="background: rgba(255,255,255,0.05); color: #fff; border-radius: 50px; padding: 0.6rem 1.2rem; font-weight: 600; font-size: 0.85rem; display: flex; align-items: center; gap: 8px;">
                     <i class="fas fa-filter"></i> <?php echo ($lang == 'tr' ? 'Filtrele' : 'Filters'); ?>
                 </button>
-                <?php if($q): ?>
+                <?php if($q) { ?>
                     <span class="badge" style="background: rgba(255,255,255,0.05); padding: 0.5rem 1rem; border-radius: 50px; font-weight: 600; font-size: 0.8rem;"><?php echo $total_videos; ?> <?php echo ($lang == 'tr' ? 'video' : 'videos'); ?></span>
-                <?php endif; ?>
+                <?php } ?>
             </div>
         </div>
+
+        <!-- Categories Slider -->
+        <div class="categories-tabs-container">
+            <div class="categories-tabs">
+                <a href="<?php echo updateURL(['category' => 'all']); ?>" class="cat-pill <?php echo $f_category == 'all' ? 'active' : ''; ?>">
+                    <i class="fas fa-th-large"></i> <?php echo ($lang == 'tr' ? 'Tümü' : 'All'); ?>
+                </a>
+                <?php
+                $all_cats = $pdo->query("SELECT * FROM categories ORDER BY id ASC")->fetchAll();
+                foreach($all_cats as $c):
+                    $c_name = ($lang == 'tr') ? $c['name_tr'] : $c['name_en'];
+                ?>
+                    <a href="<?php echo updateURL(['category' => $c['slug']]); ?>" class="cat-pill <?php echo $f_category == $c['slug'] ? 'active' : ''; ?>">
+                        <?php echo $c_name; ?>
+                    </a>
+                <?php endforeach; ?>
+            </div>
+            <div class="tabs-shadow-left"></div>
+            <div class="tabs-shadow-right"></div>
+        </div>
+
+        <style>
+            .categories-tabs-container {
+                position: relative;
+                margin-bottom: 2rem;
+                padding: 0 10px;
+            }
+            .categories-tabs {
+                display: flex;
+                gap: 12px;
+                overflow-x: auto;
+                padding: 5px 0 15px 0;
+                scrollbar-width: none;
+                -ms-overflow-style: none;
+                scroll-behavior: smooth;
+            }
+            .categories-tabs::-webkit-scrollbar { display: none; }
+            .cat-pill {
+                white-space: nowrap;
+                background: rgba(255,255,255,0.05);
+                color: rgba(255,255,255,0.7);
+                padding: 0.8rem 1.8rem;
+                border-radius: 50px;
+                text-decoration: none;
+                font-weight: 700;
+                font-size: 0.9rem;
+                transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+                border: 1px solid rgba(255,255,255,0.03);
+            }
+            .cat-pill:hover {
+                background: rgba(255,255,255,0.1);
+                color: #fff;
+                transform: translateY(-2px);
+                box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            }
+            .cat-pill.active {
+                background: var(--primary-red);
+                color: #fff;
+                box-shadow: 0 8px 25px rgba(211,47,47,0.4);
+                border-color: rgba(255,255,255,0.1);
+            }
+            .tabs-shadow-right {
+                position: absolute; right: 0; top: 0; height: 100%; width: 50px;
+                background: linear-gradient(to left, #0f0c0c, transparent);
+                pointer-events: none; opacity: 0; transition: 0.3s;
+            }
+            .tabs-shadow-left {
+                position: absolute; left: 0; top: 0; height: 100%; width: 50px;
+                background: linear-gradient(to right, #0f0c0c, transparent);
+                pointer-events: none; opacity: 0; transition: 0.3s;
+            }
+        </style>
 
         <!-- Advanced Filter Bar -->
         <div id="advanced-filters" class="filter-bar <?php echo (isset($_GET['duration']) || isset($_GET['quality']) || isset($_GET['date']) || isset($_GET['sort'])) ? 'active' : ''; ?>">

@@ -182,6 +182,14 @@ $report_types = $pdo->query("SELECT * FROM report_types ORDER BY id ASC")->fetch
         <div class="video-layout">
             <div class="video-primary">
                 <div class="player-container animate-fade" style="position: relative; min-height: 400px; background: #000; border-radius: 20px; overflow: hidden;">
+                    <!-- Ambient Glow Layer -->
+                    <canvas id="ambient-canvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; filter: blur(60px) brightness(1.2); opacity: 0.9; pointer-events: none; z-index: 1;"></canvas>
+                    <div id="ambient-fallback" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background-size: cover; background-position: center; filter: blur(60px) brightness(0.8); opacity: 0; transition: opacity 1s; z-index: 0;"></div>
+                    <style>
+                        .player-container { background: #000 !important; }
+                        .plyr { background: transparent !important; z-index: 2 !important; }
+                        .plyr--video { background: transparent !important; }
+                    </style>
                     
                     <?php if (!$has_access): ?>
                         <div class="premium-lock-screen" style="position: absolute; top:0; left:0; width:100%; height:100%; display: flex; flex-direction: column; align-items: center; justify-content: center; background: linear-gradient(135deg, #1a1a1a 0%, #000 100%); z-index: 1000; text-align: center; padding: 2rem;">
@@ -239,6 +247,13 @@ $report_types = $pdo->query("SELECT * FROM report_types ORDER BY id ASC")->fetch
                             </script>
                         <?php endif; ?>
 
+                        <?php 
+                        $video_thumb = $video['thumbnail'];
+                        if ($video_thumb && strpos($video_thumb, 'http') === false) {
+                            $video_thumb = ltrim($video_thumb, '/');
+                        }
+                        ?>
+
                         <?php if ($video['video_type'] == 'embed'): ?>
                             <?php 
                             $embed_url = $video['video_url'];
@@ -260,13 +275,8 @@ $report_types = $pdo->query("SELECT * FROM report_types ORDER BY id ASC")->fetch
                             if (strpos($v_url, 'http') === false) {
                                 $v_url = "stream.php?file=" . urlencode(ltrim($v_url, '/'));
                             }
-                            
-                            $video_thumb = $video['thumbnail'];
-                            if ($video_thumb && strpos($video_thumb, 'http') === false) {
-                                $video_thumb = ltrim($video_thumb, '/');
-                            }
                             ?>
-                            <video id="player" playsinline controls data-poster="<?php echo $video_thumb ?: ''; ?>" preload="auto">
+                            <video id="player" playsinline controls crossorigin="anonymous" data-poster="<?php echo $video_thumb ?: ''; ?>" preload="auto">
                                 <source src="<?php echo $v_url; ?>" type="video/mp4">
                             </video>
                         <?php endif; ?>
@@ -887,26 +897,34 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 </script>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 <script src="https://cdn.plyr.io/3.7.8/plyr.js"></script>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
-        const player = new Plyr('#player', {
-            controls: [
-                'play-large', 'restart', 'rewind', 'play', 'fast-forward', 'progress', 'current-time', 
-                'duration', 'mute', 'volume', 'captions', 'settings', 'pip', 'airplay', 'fullscreen'
-            ],
-            seekTime: 10,
-            volume: 1, // Max volume on start
-            youtube: {
-                noCookie: true,
-                rel: 0,
-                showinfo: 0,
-                iv_load_policy: 3,
-                modestbranding: 1
+        let player;
+        const videoElement = document.getElementById('player');
+        const source = "<?php echo ($video['video_type'] != 'embed') ? $v_url : ''; ?>";
+        
+        // HLS Desteği Kontrolü
+        if (source.includes('.m3u8')) {
+            if (Hls.isSupported()) {
+                const hls = new Hls();
+                hls.loadSource(source);
+                hls.attachMedia(videoElement);
+                window.hls = hls;
             }
-        });
+            player = new Plyr(videoElement, {
+                controls: ['play-large', 'restart', 'rewind', 'play', 'fast-forward', 'progress', 'current-time', 'duration', 'mute', 'volume', 'settings', 'pip', 'airplay', 'fullscreen']
+            });
+        } else {
+            // Normal Video veya YouTube Embed
+            player = new Plyr('#player', {
+                controls: ['play-large', 'restart', 'rewind', 'play', 'fast-forward', 'progress', 'current-time', 'duration', 'mute', 'volume', 'settings', 'pip', 'airplay', 'fullscreen'],
+                youtube: { noCookie: true, rel: 0, modestbranding: 1 }
+            });
+        }
 
-        // Hide volume in portrait mode to give space for progress bar
+        // Hide volume in portrait mode
         const handleOrientation = () => {
             const isPortrait = window.innerHeight > window.innerWidth;
             const playerElement = document.querySelector('.plyr');
@@ -925,6 +943,48 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Expose player so it can be used from the console
         window.player = player;
+        
+        // Ambient Mode / Glow Effect Logic
+        const canvas = document.getElementById('ambient-canvas');
+        const fallback = document.getElementById('ambient-fallback');
+        const isEmbed = <?php echo ($video['video_type'] == 'embed' ? 'true' : 'false'); ?>;
+        const poster = "<?php echo $video_thumb ?: ''; ?>";
+
+        if (canvas) {
+            const ctx = canvas.getContext('2d', { alpha: false });
+            
+            if (isEmbed && poster) {
+                // For YouTube embeds, use the poster as a blurred background
+                fallback.style.backgroundImage = `url('${poster}')`;
+                fallback.style.opacity = '1';
+                canvas.style.display = 'none';
+            } else {
+                const updateAmbient = () => {
+                    const video = player.media;
+                    if (video && !video.paused && !video.ended && video.readyState >= 2) {
+                        try {
+                            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        } catch (e) {
+                            // If drawing fails (CORS etc), use poster
+                            if (poster) {
+                                fallback.style.backgroundImage = `url('${poster}')`;
+                                fallback.style.opacity = '0.7';
+                                canvas.style.display = 'none';
+                            }
+                        }
+                    }
+                    requestAnimationFrame(updateAmbient);
+                };
+
+                const resizeCanvas = () => {
+                    canvas.width = 64; 
+                    canvas.height = 36;
+                };
+                resizeCanvas();
+                window.addEventListener('resize', resizeCanvas);
+                updateAmbient();
+            }
+        }
         
         // Check description overflow
         const contentBox = document.getElementById('video-desc');
