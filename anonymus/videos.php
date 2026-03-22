@@ -502,7 +502,7 @@ $categories = $pdo->query("SELECT * FROM categories")->fetchAll();
                 <td><i class="far fa-clock" style="opacity: 0.3;"></i> <?php echo $v['duration']; ?></td>
                 <td>
                     <div style="display: flex; gap: 10px;">
-                        <button class="btn-circle" onclick='editVideo(<?php echo json_encode($v); ?>)'><i class="fas fa-pen"></i></button>
+                        <button type="button" class="btn-circle" onclick='editVideo(<?php echo htmlspecialchars(json_encode($v), ENT_QUOTES, "UTF-8"); ?>)'><i class="fas fa-pen"></i></button>
                         <a href="?delete=<?php echo $v['id']; ?>" class="btn-circle" onclick="return confirm('<?php echo $t['confirm_delete']; ?>')"><i class="fas fa-trash"></i></a>
                     </div>
                 </td>
@@ -558,11 +558,8 @@ $categories = $pdo->query("SELECT * FROM categories")->fetchAll();
                         <div class="input-group">
                             <label>Kalite</label>
                             <select name="quality" id="v_quality">
-                                <option value="HD">HD</option>
+                                <option value="1080p" selected>1080p</option>
                                 <option value="4K">4K</option>
-                                <option value="1080p">1080p</option>
-                                <option value="720p">720p</option>
-                                <option value="VR">VR / 360°</option>
                             </select>
                         </div>
                     </div>
@@ -588,7 +585,7 @@ $categories = $pdo->query("SELECT * FROM categories")->fetchAll();
                         <label><?php echo $t['thumbnail']; ?></label>
                         <div style="display:flex; gap: 0.8rem; margin-bottom: 0.8rem;">
                             <input type="text" id="v_thumb_url" name="thumbnail_url" placeholder="Paste URL or CTRL+V" onchange="loadThumb(this.value)">
-                            <label class="btn-circle" style="flex-shrink: 0; background: var(--primary-red);"><i class="fas fa-upload"></i><input type="file" id="v_thumb_file" hidden accept="image/*" onchange="loadThumbFile(this)"></label>
+                            <label class="btn-circle" style="flex-shrink: 0; background: var(--primary-red); display: flex; align-items: center; justify-content: center;"><i class="fas fa-upload"></i><input type="file" id="v_thumb_file" hidden accept="image/*" onchange="loadThumbFile(this)"></label>
                         </div>
                     </div>
                     <div class="preview-area" id="thumb-preview-box">
@@ -826,7 +823,7 @@ function editVideo(v) {
     document.getElementById('v_type').value = v.video_type;
     toggleVideoInputs(v.video_type);
     document.getElementById('v_url').value = v.video_url || "";
-    document.getElementById('v_quality').value = v.quality || "HD";
+    document.getElementById('v_quality').value = v.quality || "1080p";
     document.getElementById('existing_video_url').value = v.video_url || "";
     document.getElementById('existing_thumbnail').value = v.thumbnail || "";
     document.getElementById('v_duration').value = v.duration || "0:00";

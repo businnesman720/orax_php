@@ -311,6 +311,15 @@ $report_types = $pdo->query("SELECT * FROM report_types ORDER BY id ASC")->fetch
                     </div>
                 </div>
 
+                <!-- Legal Disclaimer -->
+                <div class="legal-disclaimer" style="background: rgba(211, 47, 47, 0.05); border: 1px solid rgba(211, 47, 47, 0.15); padding: 1.2rem; border-radius: 15px; margin-bottom: 2rem; display: flex; align-items: center; gap: 15px;">
+                    <i class="fas fa-exclamation-triangle" style="color: var(--primary-red); font-size: 1.2rem;"></i>
+                    <p style="margin: 0; font-size: 0.85rem; color: rgba(255,255,255,0.7); font-weight: 600; line-height: 1.5;">
+                        <span style="color: var(--primary-red); font-weight: 800; text-transform: uppercase; margin-right: 5px;">Yasal Uyarı:</span>
+                        Sitedeki videoların hiçbiri için admin sorumluluk taşımıyor. Tüm içerikler otomatik sistemler veya kullanıcılar tarafından paylaşılmaktadır.
+                    </p>
+                </div>
+
                 <!-- Video Bottom Ad Slot -->
                 <?php if (isset($ads['video_bottom'])): ?>
                     <div class="ad-banner-video-bottom" style="margin: 2rem 0; text-align: center; border-radius: 15px; overflow: hidden; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05);">

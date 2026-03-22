@@ -42,6 +42,12 @@ if (count($videos) > 0) {
 
                     <div class="duration"><?php echo !empty($vid['duration']) ? $vid['duration'] : '00:00'; ?></div>
                     <div class="play-overlay"><i class="fas fa-play"></i></div>
+                    <?php if(!empty($vid['quality']) && strtoupper($vid['quality']) === '4K'): ?>
+                        <div class="quality-badge" style="position: absolute; top: 10px; left: 10px; background: var(--primary-red); color: #fff; padding: 2px 8px; border-radius: 5px; font-size: 0.7rem; font-weight: 800; z-index: 10;">4K</div>
+                    <?php endif; ?>
+                    <?php if(isset($vid['is_premium']) && $vid['is_premium']): ?>
+                        <div class="premium-badge" style="position: absolute; top: 10px; right: 10px; background: linear-gradient(135deg, #FFD700, #FFA500); color: #000; padding: 3px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 900; z-index: 10; box-shadow: 0 4px 10px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.2);"><i class="fas fa-crown"></i> PREMIUM</div>
+                    <?php endif; ?>
                 </div>
                 <div class="video-info">
                     <h3 class="video-title"><?php echo htmlspecialchars($display_title); ?></h3>
